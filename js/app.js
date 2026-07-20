@@ -17,9 +17,21 @@ import * as ui from "./ui.js";
 /* ------------------------------------------------------------------ */
 
 const POLL_PLAYING_MS = 5_000;
-const POLL_PAUSED_MS = 15_000;
+const POLL_PAUSED_MS = 20_000;
 /** Sondage rapide juste apres une commande, le temps que Spotify propage. */
 const POLL_AFTER_COMMAND_MS = 700;
+/**
+ * Nombre de 204 consecutifs avant de declarer qu'il n'y a plus rien en cours.
+ * Spotify renvoie des 204 parasites alors que la musique joue (application en
+ * arriere-plan sur le telephone, transition entre deux pistes) : reagir au
+ * premier ferait clignoter l'ecran en "Rien en cours".
+ */
+const EMPTY_STATES_BEFORE_IDLE = 3;
+/**
+ * L'ordre d'execution n'est pas garanti entre deux appels Player. Apres un
+ * transfert d'appareil, il faut laisser Spotify propager avant d'enchainer.
+ */
+const TRANSFER_SETTLE_MS = 400;
 /** Cadence de rafraichissement des paroles (pas d'appel reseau). */
 const LYRICS_TICK_MS = 200;
 /**
@@ -36,7 +48,11 @@ const LYRICS_LEAD_MS = 350;
 const state = {
   /** Derniere reponse /me/player. */
   player: null,
-  /** Date.now() au moment de la reception, pour interpoler la position. */
+  /**
+   * Ancre de l'horloge locale, en `performance.now()` et non `Date.now()` :
+   * monotone, donc insensible a un recalage d'horloge systeme (frequent sur
+   * une tablette bas de gamme qui resynchronise via NTP en route).
+   */
   syncedAt: 0,
   positionMs: 0,
   isPlaying: false,
@@ -44,6 +60,8 @@ const state = {
   deviceId: null,
   /** Empeche deux commandes concurrentes de se marcher dessus. */
   busy: false,
+  /** Compteur de 204 consecutifs (voir EMPTY_STATES_BEFORE_IDLE). */
+  emptyStates: 0,
 };
 
 let pollTimer = null;
@@ -126,11 +144,13 @@ async function tick() {
 }
 
 function applyPlayerState(player) {
-  state.player = player;
-  state.syncedAt = Date.now();
-
   if (!player) {
-    // 204 : aucun appareil actif. On garde l'UI en place mais neutre.
+    // 204 : possiblement "aucun appareil actif", possiblement un faux negatif.
+    // On ne vide l'ecran qu'apres plusieurs reponses vides d'affilee.
+    state.emptyStates += 1;
+    if (state.emptyStates < EMPTY_STATES_BEFORE_IDLE) return;
+
+    state.player = null;
     state.isPlaying = false;
     state.positionMs = 0;
     if (ui.renderTrack(null)) ui.clearLyrics("Lance la musique sur le telephone");
@@ -138,6 +158,9 @@ function applyPlayerState(player) {
     return;
   }
 
+  state.emptyStates = 0;
+  state.player = player;
+  state.syncedAt = performance.now();
   state.isPlaying = Boolean(player.is_playing);
   state.positionMs = player.progress_ms ?? 0;
   state.deviceId = player.device?.id ?? null;
@@ -164,13 +187,26 @@ async function onTrackChanged(track) {
   ui.clearLyrics("Recherche des paroles...");
   const requestedFor = track.id;
 
-  const lines = await fetchLyrics(track);
+  // LRCLIB interroge des sources externes quand il n'a pas la piste en cache :
+  // le temps de reponse est tres variable, d'ou l'ecran d'attente ci-dessus.
+  const result = await fetchLyrics(track);
 
   // La piste a pu changer pendant la requete : on jette le resultat perime.
   if (state.trackId !== requestedFor) return;
 
-  if (lines?.length) ui.setLyrics(lines);
-  else ui.clearLyrics("Pas de paroles pour ce titre");
+  switch (result?.kind) {
+    case "synced":
+      ui.setLyrics(result.lines);
+      break;
+    case "plain":
+      ui.setPlainLyrics(result.text);
+      break;
+    case "instrumental":
+      ui.clearLyrics("Musique instrumentale");
+      break;
+    default:
+      ui.clearLyrics("Pas de paroles pour ce titre");
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -179,7 +215,7 @@ async function onTrackChanged(track) {
 
 function estimatedPositionMs() {
   if (!state.isPlaying) return state.positionMs;
-  return state.positionMs + (Date.now() - state.syncedAt);
+  return state.positionMs + (performance.now() - state.syncedAt);
 }
 
 function startLyricsTicker() {
@@ -240,6 +276,13 @@ async function recoverNoDevice(err, retryFn) {
 
     await api.transferPlayback(target.id, false);
     state.deviceId = target.id;
+
+    // Spotify ne garantit pas l'ordre d'execution entre deux appels Player :
+    // rejouer immediatement apres un transfert echoue de facon intermittente.
+    await new Promise((r) => setTimeout(r, TRANSFER_SETTLE_MS));
+
+    // La commande rejouee porte desormais un `device_id` explicite, ce qui
+    // fonctionne meme si Spotify ne considere pas encore l'appareil comme actif.
     await retryFn();
     return true;
   } catch {

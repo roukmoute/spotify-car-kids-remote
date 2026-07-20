@@ -23,6 +23,46 @@ export class SpotifyError extends Error {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Limitation de debit                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Spotify renvoie bien un en-tete `Retry-After` sur 429, mais il est
+ * ILLISIBLE depuis un navigateur : l'API n'envoie pas
+ * `Access-Control-Expose-Headers`, et `Retry-After` ne fait pas partie des
+ * en-tetes exposes par defaut. `res.headers.get("Retry-After")` renvoie donc
+ * toujours `null`. On applique un backoff aveugle.
+ *
+ * Le quota est compte PAR APPLICATION (fenetre glissante de 30 s), pas par
+ * utilisateur : une fois limite, il faut vraiment lever le pied.
+ */
+const BACKOFF_STEPS_MS = [5_000, 15_000, 60_000, 300_000];
+const BACKOFF_KEY = "scr.rate_limited_until";
+
+let backoffStep = 0;
+
+function rateLimitedUntil() {
+  return Number(localStorage.getItem(BACKOFF_KEY) || 0);
+}
+
+/**
+ * Persiste la penalite : sans ca, un simple rechargement de page relancerait
+ * les requetes immediatement et prolongerait la limitation.
+ */
+function enterBackoff() {
+  const wait = BACKOFF_STEPS_MS[Math.min(backoffStep, BACKOFF_STEPS_MS.length - 1)];
+  backoffStep += 1;
+  localStorage.setItem(BACKOFF_KEY, String(Date.now() + wait));
+  return wait;
+}
+
+function clearBackoff() {
+  if (backoffStep === 0 && !rateLimitedUntil()) return;
+  backoffStep = 0;
+  localStorage.removeItem(BACKOFF_KEY);
+}
+
 /**
  * @param {string} path      chemin relatif a /v1, ex. "/me/player/play"
  * @param {object} [options]
@@ -33,6 +73,16 @@ export class SpotifyError extends Error {
  */
 async function api(path, options = {}) {
   const { method = "GET", body, query, retried = false } = options;
+
+  // Encore sous penalite : on echoue tout de suite sans consommer de quota.
+  const until = rateLimitedUntil();
+  if (Date.now() < until) {
+    throw new SpotifyError(
+      `Spotify limite les requetes, reprise dans ${Math.ceil((until - Date.now()) / 1000)} s.`,
+      429,
+      "RATE_LIMITED",
+    );
+  }
 
   const token = await getAccessToken();
 
@@ -60,9 +110,13 @@ async function api(path, options = {}) {
 
   // 204 No Content : reponse legitime et frequente (aucun appareil actif,
   // ou commande acceptee sans corps de reponse).
-  if (res.status === 204) return null;
+  if (res.status === 204) {
+    clearBackoff();
+    return null;
+  }
 
   if (res.ok) {
+    clearBackoff();
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
@@ -81,9 +135,9 @@ async function api(path, options = {}) {
   }
 
   if (res.status === 429) {
-    const retryAfter = Number(res.headers.get("Retry-After") || 3);
+    const wait = enterBackoff();
     throw new SpotifyError(
-      `Trop de requetes, reessai dans ${retryAfter}s.`,
+      `Trop de requetes, pause de ${Math.round(wait / 1000)} s.`,
       429,
       "RATE_LIMITED",
     );
@@ -93,10 +147,15 @@ async function api(path, options = {}) {
   const detail = payload?.error?.message || `HTTP ${res.status}`;
 
   if (res.status === 403) {
-    // Spotify renvoie 403 pour deux cas tres differents : compte non-Premium,
-    // et action interdite dans le contexte courant (ex. "previous" au debut
-    // d'une file, ou restriction de la piste en cours).
-    const isPremium = /premium/i.test(detail);
+    // Spotify renvoie 403 pour trois cas tres differents : compte non-Premium,
+    // compte non autorise sur l'app en mode developpement, et action interdite
+    // dans le contexte courant (ex. "precedent" en debut de file d'attente).
+    //
+    // Le champ `reason` n'est pas contractuel — la doc de l'objet d'erreur ne
+    // documente que `status` et `message` — donc on teste les deux.
+    const isPremium =
+      payload?.error?.reason === "PREMIUM_REQUIRED" || /premium/i.test(detail);
+
     throw new SpotifyError(
       isPremium
         ? "Cette action necessite un compte Spotify Premium."

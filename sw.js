@@ -1,13 +1,20 @@
 /**
- * Service worker minimal : app-shell en cache-first, pochettes en
- * stale-while-revalidate, et surtout AUCUN cache sur les appels d'API.
+ * Service worker minimal.
  *
  * Le but n'est pas le mode hors-ligne (sans reseau, il n'y a de toute facon
- * rien a piloter) mais le demarrage instantane : sur la tablette, le shell
- * est servi depuis le disque local, sans aller-retour reseau.
+ * rien a piloter) mais le demarrage instantane : le shell est servi depuis le
+ * disque local, sans aller-retour reseau.
  *
- * Bump SHELL_VERSION a chaque deploiement : c'est ce qui declenche le
- * remplacement du cache et evite le classique "coince sur l'ancienne version".
+ * Strategie : stale-while-revalidate partout, et surtout AUCUN cache sur les
+ * appels d'API. Le SWR plutot que le cache-first est un choix delibere : il
+ * sert la version en cache immediatement (donc demarrage instantane) tout en
+ * rafraichissant en arriere-plan, si bien qu'un deploiement se propage tout
+ * seul au chargement suivant. En cache-first pur, oublier de bumper
+ * SHELL_VERSION laisse la tablette bloquee indefiniment sur l'ancienne
+ * version — le piege classique du service worker.
+ *
+ * Bumper SHELL_VERSION reste utile pour forcer un remplacement immediat et
+ * atomique plutot qu'a retardement.
  */
 
 const SHELL_VERSION = "v1";
@@ -84,43 +91,51 @@ self.addEventListener("fetch", (event) => {
   // location.search, ils ne transitent pas par la reponse.
   if (request.mode === "navigate") {
     event.respondWith(
-      caches
-        .match("./index.html", { ignoreSearch: true })
-        .then((hit) => hit || fetch(request)),
+      staleWhileRevalidate(
+        new Request("./index.html", { credentials: "same-origin" }),
+        SHELL_CACHE,
+      ).catch(() => fetch(request)),
     );
     return;
   }
 
-  // Pochettes d'albums Spotify : stale-while-revalidate.
+  // Pochettes d'albums Spotify.
   if (url.hostname.endsWith("scdn.co")) {
-    event.respondWith(staleWhileRevalidate(request));
+    event.respondWith(staleWhileRevalidate(request, ART_CACHE, ART_MAX_ENTRIES));
     return;
   }
 
-  // Reste du shell : cache-first.
+  // Reste du shell (js, css, icones, manifest).
   if (url.origin === location.origin) {
-    event.respondWith(
-      caches.match(request).then((hit) => hit || fetch(request)),
-    );
+    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
   }
 });
 
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(ART_CACHE);
+/**
+ * Sert la version en cache immediatement et rafraichit en arriere-plan.
+ * @param {Request} request
+ * @param {string} cacheName
+ * @param {number} [maxEntries] si defini, eviction FIFO au-dela
+ */
+async function staleWhileRevalidate(request, cacheName, maxEntries) {
+  const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
 
   const network = fetch(request)
     .then((res) => {
-      // Les images scdn.co sont servies en CORS ; on ne stocke que les
-      // reponses exploitables (une reponse opaque occupe de la place sans
-      // qu'on puisse verifier son statut).
+      // On ne stocke que les reponses exploitables : une reponse opaque
+      // occupe de la place sans qu'on puisse verifier son statut.
       if (res.ok) {
-        cache.put(request, res.clone()).then(() => trimCache(cache, ART_MAX_ENTRIES));
+        cache.put(request, res.clone()).then(() => {
+          if (maxEntries) trimCache(cache, maxEntries);
+        });
       }
       return res;
     })
     .catch(() => cached);
 
+  // Si rien en cache, on attend le reseau. Sinon, reponse immediate et la
+  // revalidation se poursuit sans bloquer.
   return cached || network;
 }
 

@@ -175,6 +175,7 @@ let activeLineIndex = -1;
 export function clearLyrics(message = "Pas de paroles") {
   lyricsLayout = null;
   activeLineIndex = -1;
+  els.lyrics.classList.remove("is-scrollable");
   els.lyricsTrack.replaceChildren();
   els.lyricsTrack.style.transform = "";
   els.lyricsEmpty.textContent = message;
@@ -182,7 +183,30 @@ export function clearLyrics(message = "Pas de paroles") {
 }
 
 /**
- * Injecte les paroles et mesure les positions une seule fois.
+ * Affiche des paroles non synchronisees : pas de defilement automatique, mais
+ * c'est toujours mieux que rien — l'enfant suit avec le doigt.
+ * @param {string} text
+ */
+export function setPlainLyrics(text) {
+  lyricsLayout = null;
+  activeLineIndex = -1;
+  els.lyricsEmpty.classList.add("hidden");
+  els.lyrics.classList.add("is-scrollable");
+  els.lyrics.scrollTop = 0;
+  els.lyricsTrack.style.transform = "";
+
+  const frag = document.createDocumentFragment();
+  for (const raw of text.split(/\r?\n/)) {
+    const el = document.createElement("div");
+    el.className = "lyric-line is-active"; // tout en pleine opacite
+    el.textContent = raw.trim() || " ";
+    frag.append(el);
+  }
+  els.lyricsTrack.replaceChildren(frag);
+}
+
+/**
+ * Injecte les paroles synchronisees et mesure les positions une seule fois.
  * @param {{timeMs: number, text: string}[]} lines
  */
 export function setLyrics(lines) {
@@ -192,6 +216,7 @@ export function setLyrics(lines) {
   }
 
   els.lyricsEmpty.classList.add("hidden");
+  els.lyrics.classList.remove("is-scrollable");
 
   const frag = document.createDocumentFragment();
   const nodes = [];

@@ -95,7 +95,12 @@ export function isLoggedIn() {
 /* Etape 1 : redirection vers Spotify                                  */
 /* ------------------------------------------------------------------ */
 
-export async function beginLogin() {
+/**
+ * Construit l'URL d'autorisation et persiste le verifier + le state.
+ * Separee de la redirection pour rester verifiable sans quitter la page.
+ * @returns {Promise<string>}
+ */
+export async function buildAuthorizeUrl() {
   const clientId = getClientId();
   if (!clientId) throw new Error("client_id manquant");
 
@@ -119,7 +124,11 @@ export async function beginLogin() {
     scope: SCOPES,
   });
 
-  location.assign(`${AUTHORIZE_URL}?${params}`);
+  return `${AUTHORIZE_URL}?${params}`;
+}
+
+export async function beginLogin() {
+  location.assign(await buildAuthorizeUrl());
 }
 
 /* ------------------------------------------------------------------ */

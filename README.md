@@ -7,7 +7,7 @@ Spotify, qui est bien trop lourde pour ce matériel.
 La musique continue de sortir du téléphone (ou de l'autoradio). La tablette ne
 lit rien : elle envoie seulement des commandes à Spotify Connect.
 
-**~32 Ko transférés** (23 Ko de code gzippé + 10 Ko d'icônes), sans dépendance,
+**~35 Ko transférés** (26 Ko de code gzippé + 9 Ko d'icônes), sans dépendance,
 sans build, sans backend. Et une fois en cache, le démarrage ne touche plus le
 réseau du tout.
 
@@ -45,6 +45,12 @@ Deux conséquences pratiques :
 | Compte Spotify | **Premium obligatoire.** Les endpoints `/me/player/*` de contrôle renvoient `403` sur un compte gratuit. |
 | Tablette | Android avec un navigateur moderne (voir plus bas) |
 | Hébergement | HTTPS obligatoire (service worker + URI de redirection Spotify) |
+
+> **Deux exigences Premium, pas une.** Depuis mars 2026, une app en mode
+> développement exige aussi que *le propriétaire de l'app dans le Dashboard*
+> ait un abonnement Premium actif. Ici les deux se confondent — c'est ton
+> compte dans les deux rôles — mais si ton abonnement s'interrompt, l'app
+> cesse de fonctionner jusqu'au réabonnement.
 
 ---
 
@@ -166,9 +172,18 @@ concurrents sont donc mutualisés dans `auth.js`, sinon deux requêtes simultan�
 déclencheraient deux rotations dont l'une invaliderait l'autre.
 
 **Sondage espacé + interpolation locale.** L'état du lecteur est demandé toutes
-les 5 s en lecture (15 s en pause), et la position est extrapolée localement
-entre deux appels. Sonder à 200 ms pour des paroles fluides représenterait
-~18 000 requêtes sur un trajet d'une heure, et finirait en `429`.
+les 5 s en lecture (20 s en pause), et la position est extrapolée localement
+entre deux appels, sur `performance.now()` — horloge monotone, insensible à un
+recalage NTP en cours de route. Sonder à 200 ms pour des paroles fluides
+représenterait ~18 000 requêtes sur un trajet d'une heure, et le quota Spotify
+se compte **par application**, pas par utilisateur.
+
+**Backoff aveugle sur `429`.** Spotify envoie bien un en-tête `Retry-After`,
+mais il est illisible depuis un navigateur : l'API n'expose pas cet en-tête via
+CORS, donc `headers.get("Retry-After")` renvoie toujours `null`. La temporisation
+est donc à l'aveugle (5 s → 15 s → 60 s → 300 s) et **persistée** — sans ça, un
+simple rechargement de page relancerait les requêtes et prolongerait la
+limitation.
 
 **Paroles : LRCLIB, pas Musixmatch.** Les paroles synchronisées de Musixmatch
 (`track.subtitle.get`, `track.richsync.get`) ne font pas partie du plan
@@ -185,19 +200,48 @@ fois par morceau, puis le défilement n'est qu'une `translate3d` : cela reste su
 le compositeur et ne déclenche ni recalcul de layout ni repeint, ce qui compte
 beaucoup sur un SoC lent.
 
+**Service worker en stale-while-revalidate, pas en cache-first.** Le cache-first
+pur est plus rapide sur le papier, mais oublier de bumper la version du cache
+laisse la tablette bloquée indéfiniment sur l'ancienne version — le piège
+classique du service worker, et un piège coûteux quand l'appareil concerné vit
+dans une voiture. Le SWR sert le cache immédiatement (démarrage instantané) tout
+en rafraîchissant en arrière-plan, donc un déploiement se propage tout seul.
+
 ## Limites connues
 
 - **Premium obligatoire** pour tout le contrôle de lecture.
+- **Reconnexion tous les 6 mois.** Depuis juillet 2026, Spotify fait expirer le
+  `refresh_token` six mois après l'autorisation initiale, et le rafraîchir ne
+  remet pas le compteur à zéro. Deux fois par an, il faudra retaper les
+  identifiants sur la tablette — l'app bascule alors d'elle-même sur l'écran de
+  connexion.
 - **Toutes les chansons n'ont pas de paroles synchronisées** dans LRCLIB. La
   base est communautaire : très bonne couverture sur le répertoire courant,
-  clairsemée sur les comptines et le catalogue jeunesse. L'app affiche alors
-  « Pas de paroles pour ce titre ».
+  clairsemée sur les comptines et le catalogue jeunesse. L'app dégrade dans
+  l'ordre : synchronisées → texte simple défilable au doigt → « Musique
+  instrumentale » → « Pas de paroles pour ce titre ».
 - Les paroles peuvent dériver de quelques dixièmes de seconde : le décalage
   tablette → API → téléphone est compensé de façon empirique
   (`LYRICS_LEAD_MS` dans `js/app.js`, à ajuster au besoin).
+- **Les playlists éditoriales Spotify** (Découvertes de la semaine, Radar des
+  sorties, et plus généralement celles éditées par Spotify) sont restreintes
+  pour les applications créées après novembre 2024. Elles peuvent ne pas
+  apparaître dans la grille, ou ne pas être jouables. Tes propres playlists ne
+  sont pas concernées.
 - Le `refresh_token` est stocké en `localStorage`. Sur une tablette familiale
   partagée c'est un compromis assumé ; quiconque a la tablette en main a de
-  toute façon accès à la session.
+  toute façon accès à la session. En cas de doute, révoque l'accès depuis
+  <https://www.spotify.com/account/apps/>.
+
+> **Un point à connaître sur GitHub Pages.** Tous tes projets Pages sont servis
+> depuis la même origine `https://roukmoute.github.io`. Or le cloisonnement du
+> navigateur se fait par origine, pas par chemin : n'importe quel autre projet
+> que tu publieras un jour sur ce compte pourra lire le `localStorage` de cette
+> app — donc le jeton Spotify. Pour isoler proprement, héberge plutôt sur un
+> domaine dédié (Cloudflare Pages ou Netlify donnent une origine propre, et un
+> vrai contrôle des en-têtes HTTP pour poser une CSP). Vu le périmètre des
+> droits demandés — contrôler la lecture, rien d'autre — le risque reste faible,
+> mais autant le savoir.
 
 ## Licence
 
