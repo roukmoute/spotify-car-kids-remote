@@ -1,0 +1,459 @@
+/* ============================================================
+   spotify-car-kids-remote
+   Cible : tablette Android 7", ~1024x600, paysage, SoC lent.
+   Regles de perf :
+     - aucune ombre portee animee, aucun filter/blur en continu
+     - animations uniquement sur transform/opacity (compositor-only)
+     - pas de police web : stack systeme uniquement
+     - grosses zones tactiles (>= 88px) pour des mains d'enfant
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0a0a0c;
+  --surface: #17171c;
+  --surface-hi: #24242c;
+  --text: #ffffff;
+  --text-dim: #a0a0ac;
+  --accent: #1db954;
+  --accent-press: #17a34a;
+  --danger: #e0245e;
+  --lyric-idle: #6a6a76;
+  --lyric-active: #ffffff;
+  --radius: 18px;
+
+  /* Taille de base pilotee par la largeur reelle de l'ecran.
+     Sur 1024px de large -> ~17px. Sur 600px -> ~13px. */
+  font-size: clamp(13px, 1.65vw, 20px);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Supprime le delai de 300ms et le double-tap-zoom */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- Structure des vues ---------- */
+
+.view {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Vue LECTURE ---------- */
+
+#view-player {
+  display: grid;
+  grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 1.2rem;
+  padding: 1.2rem;
+}
+
+.cover-wrap {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+#cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* decode async : evite de bloquer le thread principal sur un SoC lent */
+}
+
+.track-meta {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#title {
+  margin: 0;
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1.15;
+  /* 2 lignes max, ellipsis */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+#artist {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Paroles ---------- */
+
+#lyrics {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.9rem;
+  overflow: hidden; /* le scroll est pilote par transform, pas par scrollTop */
+  position: relative;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 12%,
+    #000 78%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 12%,
+    #000 78%,
+    transparent 100%
+  );
+}
+
+#lyrics-track {
+  will-change: transform;
+  transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lyric-line {
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1.32;
+  padding: 0.22rem 0;
+  color: var(--lyric-idle);
+  /* transition de couleur uniquement : pas de reflow */
+  transition: color 180ms linear, opacity 180ms linear;
+  opacity: 0.75;
+}
+
+.lyric-line.is-active {
+  color: var(--lyric-active);
+  opacity: 1;
+}
+
+.lyrics-empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--lyric-idle);
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+/* ---------- Barre de transport ---------- */
+
+.transport {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-radius: 50%;
+  width: 5.2rem;
+  height: 5.2rem;
+  flex: 0 0 auto;
+  transition: transform 90ms ease-out, background-color 90ms ease-out;
+}
+
+.btn:active {
+  transform: scale(0.9);
+  background: var(--surface-hi);
+}
+
+.btn svg {
+  width: 46%;
+  height: 46%;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--accent);
+  width: 6.6rem;
+  height: 6.6rem;
+  color: #04120a;
+}
+
+.btn-primary:active {
+  background: var(--accent-press);
+}
+
+.btn[disabled] {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Bouton d'acces aux playlists, en overlay coin haut droit */
+.btn-corner {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 4.2rem;
+  height: 4.2rem;
+  background: rgba(255, 255, 255, 0.09);
+  z-index: 5;
+}
+
+/* ---------- Vue PLAYLISTS ---------- */
+
+#view-playlists {
+  padding: 1.1rem;
+}
+
+.pl-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.pl-header h2 {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+
+.pl-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.2rem, 1fr));
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.pl-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  text-align: center;
+  /* n'affiche/decode que ce qui est a l'ecran : gros gain sur SoC lent */
+  content-visibility: auto;
+  contain-intrinsic-size: 12rem;
+  transition: transform 90ms ease-out;
+}
+
+.pl-item:active {
+  transform: scale(0.94);
+}
+
+.pl-item img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.pl-item span {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- Ecrans setup / login / erreur ---------- */
+
+.centered {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  gap: 1rem;
+}
+
+.centered h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+.centered p {
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  max-width: 34rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.btn-wide {
+  background: var(--accent);
+  color: #04120a;
+  border-radius: 999px;
+  padding: 1.1rem 2.6rem;
+  font-size: 1.3rem;
+  font-weight: 800;
+  min-height: 3.6rem;
+}
+
+.btn-wide:active {
+  background: var(--accent-press);
+  transform: scale(0.97);
+}
+
+.btn-ghost {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.8rem 1.8rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+input[type="text"] {
+  font: inherit;
+  font-size: 1.1rem;
+  padding: 0.9rem 1.1rem;
+  width: min(30rem, 100%);
+  border-radius: 12px;
+  border: 2px solid var(--surface-hi);
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- Toast d'erreur ---------- */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.2rem;
+  transform: translate(-50%, 150%);
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.85rem 1.4rem;
+  border-radius: 999px;
+  z-index: 50;
+  transition: transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  max-width: 90vw;
+  text-align: center;
+}
+
+#toast.is-shown {
+  transform: translate(-50%, 0);
+}
+
+/* ---------- Portrait / petits ecrans : on empile ---------- */
+
+@media (orientation: portrait) {
+  #view-player {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .cover-wrap {
+    grid-column: 1;
+    grid-row: 1;
+    max-height: 34vh;
+  }
+
+  #cover {
+    width: auto;
+    height: 100%;
+    max-height: 34vh;
+  }
+
+  .track-meta {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+/* Ecrans tres bas (600px de haut) : on reduit la place des paroles */
+@media (max-height: 620px) {
+  .btn {
+    width: 4.6rem;
+    height: 4.6rem;
+  }
+
+  .btn-primary {
+    width: 5.8rem;
+    height: 5.8rem;
+  }
+
+  #title {
+    font-size: 1.8rem;
+  }
+}
+
+/* Respecte le reglage systeme d'accessibilite */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

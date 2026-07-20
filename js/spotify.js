@@ -1,0 +1,232 @@
+/**
+ * Client Spotify Web API, reduit aux seuls endpoints dont l'app a besoin.
+ *
+ * Toutes les requetes passent par `api()`, qui centralise les trois choses qui
+ * font echouer ce genre d'app en conditions reelles :
+ *   - 401 : token perime -> on rafraichit et on rejoue UNE fois
+ *   - 429 : rate limit -> on respecte Retry-After (Spotify le renvoie en
+ *           secondes) plutot que de marteler
+ *   - 204 : "rien en cours / aucun appareil actif" -> corps vide, il ne faut
+ *           surtout pas tenter un res.json()
+ */
+
+import { getAccessToken, invalidateAccessToken, AuthExpiredError } from "./auth.js";
+
+const BASE = "https://api.spotify.com/v1";
+
+export class SpotifyError extends Error {
+  constructor(message, status, reason) {
+    super(message);
+    this.name = "SpotifyError";
+    this.status = status;
+    this.reason = reason; // ex. "NO_ACTIVE_DEVICE", "PREMIUM_REQUIRED"
+  }
+}
+
+/**
+ * @param {string} path      chemin relatif a /v1, ex. "/me/player/play"
+ * @param {object} [options]
+ * @param {string} [options.method]
+ * @param {object} [options.body]     serialise en JSON si present
+ * @param {object} [options.query]    paires ajoutees en query string
+ * @param {boolean} [options.retried] usage interne
+ */
+async function api(path, options = {}) {
+  const { method = "GET", body, query, retried = false } = options;
+
+  const token = await getAccessToken();
+
+  let url = BASE + path;
+  if (query) {
+    const qs = new URLSearchParams(
+      Object.entries(query).filter(([, v]) => v !== undefined && v !== null),
+    );
+    if (String(qs)) url += `?${qs}`;
+  }
+
+  const headers = { Authorization: `Bearer ${token}` };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new SpotifyError("Reseau indisponible.", 0, "NETWORK");
+  }
+
+  // 204 No Content : reponse legitime et frequente (aucun appareil actif,
+  // ou commande acceptee sans corps de reponse).
+  if (res.status === 204) return null;
+
+  if (res.ok) {
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  /* ---------------- Gestion des erreurs ---------------- */
+
+  if (res.status === 401 && !retried) {
+    // Le token a expire entre le check local et l'appel : on force un refresh
+    // en invalidant l'access token courant, puis on rejoue une seule fois.
+    invalidateAccessToken();
+    return api(path, { ...options, retried: true });
+  }
+
+  if (res.status === 401) {
+    throw new AuthExpiredError("Session Spotify expiree.");
+  }
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get("Retry-After") || 3);
+    throw new SpotifyError(
+      `Trop de requetes, reessai dans ${retryAfter}s.`,
+      429,
+      "RATE_LIMITED",
+    );
+  }
+
+  const payload = await res.json().catch(() => ({}));
+  const detail = payload?.error?.message || `HTTP ${res.status}`;
+
+  if (res.status === 403) {
+    // Spotify renvoie 403 pour deux cas tres differents : compte non-Premium,
+    // et action interdite dans le contexte courant (ex. "previous" au debut
+    // d'une file, ou restriction de la piste en cours).
+    const isPremium = /premium/i.test(detail);
+    throw new SpotifyError(
+      isPremium
+        ? "Cette action necessite un compte Spotify Premium."
+        : `Action refusee par Spotify : ${detail}`,
+      403,
+      isPremium ? "PREMIUM_REQUIRED" : "RESTRICTED",
+    );
+  }
+
+  if (res.status === 404) {
+    // Sur les endpoints /me/player/*, un 404 signifie presque toujours
+    // "aucun appareil actif" plutot qu'une URL erronee.
+    throw new SpotifyError(
+      "Aucun appareil Spotify actif. Lance la musique sur le telephone.",
+      404,
+      "NO_ACTIVE_DEVICE",
+    );
+  }
+
+  throw new SpotifyError(detail, res.status, "UNKNOWN");
+}
+
+/* ------------------------------------------------------------------ */
+/* Lecture d'etat                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Etat complet du lecteur. Renvoie null si aucun appareil n'est actif
+ * (Spotify repond 204 dans ce cas).
+ *
+ * `additional_types=track,episode` evite que les podcasts remontent avec un
+ * item null, ce qui casserait l'affichage.
+ */
+export function getPlayerState() {
+  return api("/me/player", {
+    query: { additional_types: "track,episode", market: "from_token" },
+  });
+}
+
+/** Liste des appareils Spotify Connect visibles par le compte. */
+export async function getDevices() {
+  const data = await api("/me/player/devices");
+  return data?.devices ?? [];
+}
+
+/**
+ * Playlists de l'utilisateur. 50 est le maximum accepte par l'API ;
+ * on pagine jusqu'a `max` pour eviter une grille interminable sur la tablette.
+ */
+export async function getPlaylists(max = 100) {
+  const out = [];
+  let offset = 0;
+
+  while (out.length < max) {
+    const page = await api("/me/playlists", { query: { limit: 50, offset } });
+    const items = page?.items ?? [];
+    out.push(...items.filter(Boolean));
+    if (items.length < 50 || !page?.next) break;
+    offset += 50;
+  }
+
+  return out.slice(0, max).map((p) => ({
+    id: p.id,
+    uri: p.uri,
+    name: p.name,
+    // images peut etre null ou vide (playlist sans pochette) ; on prend la
+    // plus petite image >= 200px pour limiter le cout de decodage.
+    image: pickImage(p.images, 300),
+  }));
+}
+
+/** Choisit l'image la plus proche de `target` px sans descendre en dessous. */
+function pickImage(images, target) {
+  if (!images?.length) return null;
+  const sized = images.filter((i) => i.width);
+  if (!sized.length) return images[0].url;
+  const big = sized.filter((i) => i.width >= target);
+  const pool = big.length ? big : sized;
+  return pool.reduce((a, b) => (a.width <= b.width ? a : b)).url;
+}
+
+/* ------------------------------------------------------------------ */
+/* Commandes de lecture                                                */
+/* ------------------------------------------------------------------ */
+
+export function play(deviceId) {
+  return api("/me/player/play", { method: "PUT", query: { device_id: deviceId } });
+}
+
+export function pause(deviceId) {
+  return api("/me/player/pause", { method: "PUT", query: { device_id: deviceId } });
+}
+
+export function next(deviceId) {
+  return api("/me/player/next", { method: "POST", query: { device_id: deviceId } });
+}
+
+export function previous(deviceId) {
+  return api("/me/player/previous", { method: "POST", query: { device_id: deviceId } });
+}
+
+/**
+ * Demarre une playlist (ou tout autre contexte : album, artiste).
+ * `context_uri` va dans le CORPS, pas dans la query — erreur classique.
+ */
+export function playContext(contextUri, deviceId, { shuffle = false } = {}) {
+  return (async () => {
+    if (shuffle) {
+      // L'ordre compte : activer le shuffle AVANT de lancer le contexte, sinon
+      // la premiere piste est toujours la meme.
+      await api("/me/player/shuffle", {
+        method: "PUT",
+        query: { state: "true", device_id: deviceId },
+      }).catch(() => {}); // non bloquant : le shuffle est un confort
+    }
+    return api("/me/player/play", {
+      method: "PUT",
+      query: { device_id: deviceId },
+      body: { context_uri: contextUri },
+    });
+  })();
+}
+
+/**
+ * Bascule la lecture sur un appareil.
+ * @param {boolean} startPlaying true = enchaine directement sur la lecture
+ */
+export function transferPlayback(deviceId, startPlaying = true) {
+  return api("/me/player", {
+    method: "PUT",
+    body: { device_ids: [deviceId], play: startPlaying },
+  });
+}

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Telecommande Spotify minimaliste pour la voiture" />
+    <title>Musique</title>
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- Preconnect : le handshake TLS vers Spotify est fait pendant le boot -->
+    <link rel="preconnect" href="https://api.spotify.com" crossorigin />
+    <link rel="preconnect" href="https://i.scdn.co" />
+  </head>
+
+  <body>
+    <!-- ===== Icones SVG, definies une fois, reutilisees via <use> ===== -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-prev" viewBox="0 0 24 24">
+          <path d="M6 6h2.5v12H6zM20 6v12L9.5 12z" />
+        </symbol>
+        <symbol id="i-next" viewBox="0 0 24 24">
+          <path d="M15.5 6H18v12h-2.5zM4 6l10.5 6L4 18z" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path d="M7 4.5v15L20 12z" />
+        </symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24">
+          <path d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z" />
+        </symbol>
+        <symbol id="i-list" viewBox="0 0 24 24">
+          <path
+            d="M4 6h11v2.5H4zM4 11h11v2.5H4zM4 16h7v2.5H4zM17.5 11.5l4.5 3-4.5 3z"
+          />
+        </symbol>
+        <symbol id="i-back" viewBox="0 0 24 24">
+          <path d="M20 10.75H7.9l5.05-5.05L11.25 4 3.25 12l8 8 1.7-1.7-5.05-5.05H20z" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- ===== 1. Ecran de configuration (1er lancement uniquement) ===== -->
+    <section id="view-setup" class="view centered hidden">
+      <h1>Configuration</h1>
+      <p>
+        Colle ici le <strong>Client ID</strong> de ton application Spotify
+        (Dashboard developpeur). Il n'est demande qu'une seule fois.
+      </p>
+      <input
+        type="text"
+        id="client-id-input"
+        placeholder="ex. 4f2b8c1e9a7d4e3fb6c5a8d9e0f1a2b3"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        inputmode="latin"
+      />
+      <p id="setup-redirect" class="hidden"></p>
+      <button id="setup-save" class="btn-wide">Enregistrer</button>
+    </section>
+
+    <!-- ===== 2. Ecran de connexion ===== -->
+    <section id="view-login" class="view centered hidden">
+      <h1>Musique</h1>
+      <p>Connecte-toi a Spotify pour piloter la lecture.</p>
+      <button id="login-btn" class="btn-wide">Se connecter a Spotify</button>
+      <button id="reset-config" class="btn-ghost">Changer le Client ID</button>
+    </section>
+
+    <!-- ===== 3. Ecran de chargement ===== -->
+    <section id="view-loading" class="view centered">
+      <p>Chargement...</p>
+    </section>
+
+    <!-- ===== 4. Vue principale : lecture en cours ===== -->
+    <section id="view-player" class="view hidden">
+      <button
+        id="open-playlists"
+        class="btn btn-corner"
+        aria-label="Choisir une playlist"
+      >
+        <svg><use href="#i-list" /></svg>
+      </button>
+
+      <div class="cover-wrap">
+        <img
+          id="cover"
+          alt=""
+          decoding="async"
+          fetchpriority="high"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"
+        />
+      </div>
+
+      <div class="track-meta">
+        <h1 id="title">Rien en cours</h1>
+        <p id="artist"></p>
+
+        <div id="lyrics">
+          <div id="lyrics-track"></div>
+          <div id="lyrics-empty" class="lyrics-empty">Pas de paroles</div>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button id="btn-prev" class="btn" aria-label="Precedent">
+          <svg><use href="#i-prev" /></svg>
+        </button>
+        <button id="btn-toggle" class="btn btn-primary" aria-label="Lecture / Pause">
+          <svg><use id="toggle-icon" href="#i-play" /></svg>
+        </button>
+        <button id="btn-next" class="btn" aria-label="Suivant">
+          <svg><use href="#i-next" /></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== 5. Vue playlists ===== -->
+    <section id="view-playlists" class="view hidden">
+      <div class="pl-header">
+        <button id="close-playlists" class="btn" aria-label="Retour">
+          <svg><use href="#i-back" /></svg>
+        </button>
+        <h2>Playlists</h2>
+      </div>
+      <div id="pl-grid" class="pl-grid"></div>
+    </section>
+
+    <!-- ===== 6. Ecran d'erreur bloquante ===== -->
+    <section id="view-error" class="view centered hidden">
+      <h1 id="error-title">Oups</h1>
+      <p id="error-msg"></p>
+      <button id="error-action" class="btn-wide">Reessayer</button>
+    </section>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script src="js/app.js" type="module"></script>
+  </body>
+</html>

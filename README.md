@@ -1,0 +1,204 @@
+# spotify-car-kids-remote
+
+Télécommande Spotify minimaliste, pensée pour qu'un enfant change la musique de
+la voiture depuis une tablette d'entrée de gamme — sans installer l'application
+Spotify, qui est bien trop lourde pour ce matériel.
+
+La musique continue de sortir du téléphone (ou de l'autoradio). La tablette ne
+lit rien : elle envoie seulement des commandes à Spotify Connect.
+
+**~32 Ko transférés** (23 Ko de code gzippé + 10 Ko d'icônes), sans dépendance,
+sans build, sans backend. Et une fois en cache, le démarrage ne touche plus le
+réseau du tout.
+
+## Ce que ça fait
+
+- Titre, artiste et pochette de ce qui joue
+- Lecture / pause / suivant / précédent, en très gros boutons
+- Sélecteur de playlists sous forme de grille de pochettes
+- Paroles synchronisées en grand, qui défilent toutes seules
+
+## Comment ça marche
+
+```
+Tablette (cette PWA)  ──HTTPS──>  API Spotify  ──>  Téléphone (Spotify Connect)
+        │                                                    │
+        │                                              lecture réelle
+        └──HTTPS──> LRCLIB (paroles synchronisées, sans clé)
+```
+
+Aucun serveur intermédiaire. La tablette parle directement à l'API Spotify et à
+LRCLIB, les deux acceptant les requêtes navigateur (CORS).
+
+Deux conséquences pratiques :
+
+- **La tablette n'a pas besoin d'être sur le même Wi-Fi que le téléphone.**
+  Spotify Connect passe par les serveurs de Spotify. Un partage de connexion,
+  ou deux connexions différentes, fonctionnent aussi bien.
+- **La tablette doit être connectée avec le compte Spotify qui joue la
+  musique**, puisque la liste des appareils est propre à chaque compte.
+
+## Prérequis
+
+| | |
+|---|---|
+| Compte Spotify | **Premium obligatoire.** Les endpoints `/me/player/*` de contrôle renvoient `403` sur un compte gratuit. |
+| Tablette | Android avec un navigateur moderne (voir plus bas) |
+| Hébergement | HTTPS obligatoire (service worker + URI de redirection Spotify) |
+
+---
+
+## Installation
+
+### 1. Créer l'application Spotify
+
+1. Aller sur <https://developer.spotify.com/dashboard> et se connecter.
+2. **Create app**.
+   - *App name* : `Telecommande voiture` (peu importe)
+   - *Redirect URIs* : ajouter **les deux** lignes suivantes
+     ```
+     https://roukmoute.github.io/spotify-car-kids-remote/
+     http://127.0.0.1:5173/
+     ```
+     La seconde sert au développement en local. Le slash final compte, et
+     `localhost` n'est **pas** accepté par Spotify — il faut bien `127.0.0.1`.
+   - *Which API/SDKs are you planning to use* : cocher **Web API**
+3. Valider, puis ouvrir **Settings** et copier le **Client ID**.
+
+Le Client ID n'est pas un secret : dans le flux PKCE, c'est un identifiant
+public. Il n'y a **aucun** `client_secret` dans ce projet, c'est précisément ce
+qui permet de se passer de backend.
+
+> **Mode développement.** Une app fraîchement créée est limitée à 25 personnes,
+> ajoutées à la main dans **Settings → User Management**. Comme la tablette se
+> connecte avec *ton* compte (celui qui joue la musique), tu es le seul à
+> ajouter — les enfants n'ont pas de compte à eux dans l'histoire.
+
+### 2. Publier l'app
+
+Le dépôt ne contient que des fichiers statiques : n'importe quel hébergeur HTTPS
+convient. Avec GitHub Pages :
+
+1. **Settings → Pages**
+2. *Source* : `Deploy from a branch`
+3. *Branch* : `main`, dossier `/ (root)`, puis **Save**
+
+L'app est en ligne sur `https://<utilisateur>.github.io/spotify-car-kids-remote/`
+au bout d'une minute environ.
+
+> Si tu déploies ailleurs, pense à ajouter la nouvelle URL dans les *Redirect
+> URIs* du dashboard Spotify : elle doit correspondre **exactement**.
+
+### 3. Configurer la tablette
+
+1. Ouvrir l'URL dans le navigateur.
+2. Coller le **Client ID** — demandé une seule fois, il est ensuite mémorisé.
+3. **Se connecter à Spotify**, accepter les autorisations.
+4. Menu du navigateur → **Ajouter à l'écran d'accueil**.
+
+L'icône lance ensuite l'app en plein écran, sans barre d'adresse. La session est
+conservée : les enfants n'ont jamais à se reconnecter.
+
+#### Quel navigateur sur la tablette
+
+Il faut un navigateur basé sur Chromium **avec son propre moteur**. Beaucoup de
+navigateurs « ultra-légers » sont en réalité de simples habillages de l'Android
+System WebView : leur « Ajouter à l'écran d'accueil » ne crée qu'un raccourci
+qui rouvre le navigateur avec sa barre d'adresse, au lieu d'une vraie fenêtre
+autonome.
+
+- **Chrome** : le choix par défaut, déjà présent, vraie installation PWA.
+- **Cromite** : successeur maintenu de Bromite, sans télémétrie, plus léger que
+  Chrome. Bon compromis sur une tablette poussive.
+- **Fully Kiosk Browser** : si tu veux verrouiller la tablette sur cette seule
+  app (utile en voiture — les enfants ne peuvent plus en sortir). Version
+  gratuite suffisante, licence payante pour retirer la bannière.
+
+Le poids de l'APK du navigateur importe peu : c'est l'app Spotify (plusieurs
+centaines de Mo, et surtout son démarrage à froid) qui rendait la tablette
+inutilisable, pas le navigateur.
+
+---
+
+## Développement local
+
+```sh
+node tools/dev-server.mjs      # http://127.0.0.1:5173/
+```
+
+Serveur statique sans dépendance. Il écoute volontairement sur `127.0.0.1` :
+c'est la seule adresse pour laquelle Spotify tolère encore une redirection en
+`http://`, et c'est un *secure context* pour le navigateur, donc les service
+workers et `crypto.subtle` se comportent comme en production.
+
+Régénérer les icônes après modification :
+
+```sh
+node tools/make-icons.mjs
+```
+
+## Structure
+
+```
+index.html              shell + icônes SVG en <symbol>
+styles.css              tout le style (aucun framework)
+manifest.webmanifest    métadonnées PWA
+sw.js                   service worker : démarrage instantané
+js/auth.js              OAuth 2.0 PKCE, rotation du refresh token
+js/spotify.js           client Web API (401/403/404/429 gérés)
+js/lyrics.js            LRCLIB + parseur LRC + cache local
+js/ui.js                rendu DOM et défilement des paroles
+js/app.js               boucle d'état et commandes
+tools/dev-server.mjs    serveur statique de dev
+tools/make-icons.mjs    générateur d'icônes PNG (sans dépendance)
+```
+
+## Choix techniques
+
+**PKCE plutôt que le flux implicite.** Le flux implicite ne délivre pas de
+`refresh_token` : il faudrait se reconnecter toutes les heures, rédhibitoire
+quand ce sont des enfants qui utilisent la tablette. PKCE fournit un
+`refresh_token` sans `client_secret`, donc sans backend.
+
+Attention, ce `refresh_token` est **rotatif** : chaque rafraîchissement en
+renvoie un nouveau qu'il faut persister immédiatement. Les rafraîchissements
+concurrents sont donc mutualisés dans `auth.js`, sinon deux requêtes simultanées
+déclencheraient deux rotations dont l'une invaliderait l'autre.
+
+**Sondage espacé + interpolation locale.** L'état du lecteur est demandé toutes
+les 5 s en lecture (15 s en pause), et la position est extrapolée localement
+entre deux appels. Sonder à 200 ms pour des paroles fluides représenterait
+~18 000 requêtes sur un trajet d'une heure, et finirait en `429`.
+
+**Paroles : LRCLIB, pas Musixmatch.** Les paroles synchronisées de Musixmatch
+(`track.subtitle.get`, `track.richsync.get`) ne font pas partie du plan
+développeur gratuit, et l'API n'envoie pas d'en-têtes CORS : il faudrait un
+backend uniquement pour porter la clé. LRCLIB est gratuit, sans clé, et répond
+`Access-Control-Allow-Origin: *`. C'est ce qui garde le projet 100 % statique.
+
+Spotify n'expose aucun endpoint public de paroles — celui qu'utilise son
+application officielle est privé et non documenté. Ce projet ne s'appuie pas
+dessus.
+
+**Défilement par `transform`.** Les positions des lignes sont mesurées une seule
+fois par morceau, puis le défilement n'est qu'une `translate3d` : cela reste sur
+le compositeur et ne déclenche ni recalcul de layout ni repeint, ce qui compte
+beaucoup sur un SoC lent.
+
+## Limites connues
+
+- **Premium obligatoire** pour tout le contrôle de lecture.
+- **Toutes les chansons n'ont pas de paroles synchronisées** dans LRCLIB. La
+  base est communautaire : très bonne couverture sur le répertoire courant,
+  clairsemée sur les comptines et le catalogue jeunesse. L'app affiche alors
+  « Pas de paroles pour ce titre ».
+- Les paroles peuvent dériver de quelques dixièmes de seconde : le décalage
+  tablette → API → téléphone est compensé de façon empirique
+  (`LYRICS_LEAD_MS` dans `js/app.js`, à ajuster au besoin).
+- Le `refresh_token` est stocké en `localStorage`. Sur une tablette familiale
+  partagée c'est un compromis assumé ; quiconque a la tablette en main a de
+  toute façon accès à la session.
+
+## Licence
+
+MIT
