@@ -41,6 +41,7 @@ const SHELL_ASSETS = [
   "./js/auth.js",
   "./js/spotify.js",
   "./js/lyrics.js",
+  "./js/store.js",
   "./js/ui.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

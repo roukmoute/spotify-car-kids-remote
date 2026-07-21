@@ -10,6 +10,7 @@
 import * as auth from "./auth.js";
 import * as api from "./spotify.js";
 import { fetchLyrics } from "./lyrics.js";
+import * as store from "./store.js";
 import * as ui from "./ui.js";
 
 /* ------------------------------------------------------------------ */
@@ -361,19 +362,44 @@ function skipPrevious() {
 /** Playlists de l'utilisateur, indexees pour retrouver un nom depuis un URI. */
 const playlistById = new Map();
 
-async function loadPlaylists() {
-  try {
-    const playlists = await api.getPlaylists();
-    playlistById.clear();
-    for (const p of playlists) playlistById.set(p.id, p);
-    ui.renderPlaylists(playlists, (p) => openPlaylist(p, { from: "playlists" }));
+/** Rend la grille et met a jour l'index utilise par la pastille. */
+function applyPlaylists(playlists) {
+  playlistById.clear();
+  for (const p of playlists) playlistById.set(p.id, p);
+  ui.renderPlaylists(playlists, (p) => openPlaylist(p, { from: "playlists" }));
 
-    // La pastille a pu etre evaluee avant que ce cache soit peuplé : le nom
-    // etait alors introuvable localement, et l'appel de repli a pu echouer.
-    // On la reevalue maintenant que les playlists sont connues.
-    refreshContextChip();
+  // La pastille a pu etre evaluee avant que cet index soit peuple : le nom
+  // etait alors introuvable localement, et l'appel de repli a pu echouer.
+  // On la reevalue maintenant que les playlists sont connues.
+  refreshContextChip();
+}
+
+/**
+ * Playlists : on affiche d'abord la version en cache, puis on rafraichit.
+ *
+ * En voiture, le reseau lache regulierement. Sans cache, la grille reste vide
+ * jusqu'a ce que l'appel aboutisse — et ne s'affiche jamais dans un tunnel.
+ * Avec, elle est la immediatement et se corrige silencieusement au retour du
+ * reseau.
+ */
+async function loadPlaylists() {
+  const cached = store.read("playlists");
+  if (cached?.length) applyPlaylists(cached);
+
+  let playlists;
+  try {
+    playlists = await api.getPlaylists();
   } catch (err) {
+    // Hors ligne : on garde ce qui est affiche plutot que de le vider.
     handleError(err, { silent: true });
+    return;
+  }
+
+  // Ne re-rend que si le contenu a reellement change : reconstruire la grille
+  // pour rien coute cher sur ce SoC, et ferait sauter le defilement en cours.
+  if (JSON.stringify(playlists) !== JSON.stringify(cached)) {
+    applyPlaylists(playlists);
+    store.write("playlists", playlists);
   }
 }
 
@@ -394,17 +420,28 @@ let tracksBackView = "playlists";
 async function openPlaylist(playlist, { from = "playlists", focusCurrent = false } = {}) {
   viewedPlaylist = playlist;
   tracksBackView = from;
-
-  ui.showTracksMessage("Chargement...", playlist.name);
   ui.showView("tracks");
+
+  const cacheKey = "tracks." + playlist.id;
+  const cached = store.read(cacheKey);
+
+  // Version en cache affichee immediatement : ouvrir une playlist deja vue
+  // est instantane, et reste possible dans une zone blanche.
+  if (cached?.length) {
+    ui.renderTracks(cached, playlist.name, (t) => playTrack(playlist, t));
+    ui.markCurrentTrack(state.trackId, focusCurrent);
+  } else {
+    ui.showTracksMessage("Chargement...", playlist.name);
+  }
 
   let tracks;
   try {
     tracks = await api.getPlaylistTracks(playlist.id);
   } catch (err) {
-    // On reste sur la vue : afficher l'erreur en place vaut mieux que
-    // renvoyer l'enfant sur un ecran qu'il n'a pas demande.
-    ui.showTracksMessage("Impossible de charger les titres.");
+    // Hors ligne : si on avait une version en cache, elle reste a l'ecran.
+    if (!cached?.length) {
+      ui.showTracksMessage("Impossible de charger les titres.");
+    }
     handleError(err, { silent: true });
     return;
   }
@@ -413,9 +450,19 @@ async function openPlaylist(playlist, { from = "playlists", focusCurrent = false
   if (viewedPlaylist?.id !== playlist.id) return;
 
   if (!tracks.length) {
+    store.remove(cacheKey);
     ui.showTracksMessage("Cette playlist est vide.");
     return;
   }
+
+  store.write(cacheKey, tracks);
+  // Nombre de playlists dont on garde les titres. Au-dela, les moins
+  // recemment ouvertes sont oubliees : une playlist de 200 titres pese ~25 Ko.
+  store.trackRecent("tracks.", cacheKey, 12);
+
+  // Rien n'a bouge : on evite de reconstruire la liste et de perdre la
+  // position de defilement de l'enfant en train de choisir.
+  if (cached?.length && JSON.stringify(tracks) === JSON.stringify(cached)) return;
 
   ui.renderTracks(tracks, playlist.name, (track) => playTrack(playlist, track));
   ui.markCurrentTrack(state.trackId, focusCurrent);

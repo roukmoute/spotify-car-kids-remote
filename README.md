@@ -237,6 +237,36 @@ Le pré-cache n'utilise volontairement pas `cache.addAll`, qui est atomique :
 une seule requête en échec annulerait tout. Sur une connexion partagée depuis
 un téléphone en roulant, un cache partiel vaut mieux que pas de cache.
 
+## Cache et connexion difficile
+
+L'usage réel est une voiture : tunnels, zones blanches, 4G qui faiblit. Tout
+ce qui peut être servi localement l'est.
+
+| | Où | Plafond |
+|---|---|---|
+| Pochettes | Cache du service worker, *cache-first* | 120 images |
+| Paroles | `localStorage`, une clé par piste | 120 titres (~520 Ko) |
+| Liste des playlists | `localStorage` | 1 entrée |
+| Titres des playlists | `localStorage`, éviction LRU | 12 playlists (~170 Ko) |
+
+Playlists et titres sont affichés **depuis le cache d'abord**, puis rafraîchis
+en arrière-plan et re-rendus seulement si le contenu a changé — reconstruire la
+liste pour rien coûte cher sur ce SoC et ferait perdre la position de
+défilement. Si le réseau est absent, ce qui est affiché reste affiché.
+
+Vérifié réseau entièrement coupé : la grille et les titres restent utilisables,
+sans message d'erreur.
+
+**Ce que le cache ne peut pas faire :** rendre l'application utilisable hors
+ligne. Piloter la lecture passe forcément par les serveurs Spotify — sans
+connexion, les commandes échouent, quel que soit le cache. Il évite l'écran
+vide et les listes qui disparaissent, pas la panne de réseau.
+
+Le cache des paroles a été mesuré sur la tablette cible (`tools/bench.html`) :
+une clé par piste coûte 0,3 ms par changement de piste, contre 80 ms pour un
+cache monolithique — `localStorage` étant synchrone, ces 80 ms bloquaient le
+rendu.
+
 ## Limites connues
 
 - **Premium obligatoire** pour tout le contrôle de lecture.
