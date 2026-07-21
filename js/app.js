@@ -335,8 +335,12 @@ function togglePlayback() {
     () => {
       state.isPlaying = !wasPlaying;
       // On recale l'horloge pour que l'interpolation reste juste apres pause.
+      // IMPERATIF : la meme base que `estimatedPositionMs`, donc
+      // `performance.now()`. Melanger les deux donne un ecart de l'ordre de
+      // 1,7e12 ms, la position estimee part en negatif, plus aucune ligne de
+      // paroles ne correspond et le defilement se fige.
       state.positionMs = estimatedPositionMs();
-      state.syncedAt = Date.now();
+      state.syncedAt = performance.now();
       ui.renderPlayback({ isPlaying: state.isPlaying });
     },
   );
@@ -598,6 +602,11 @@ function wireEvents() {
   document
     .getElementById("close-tracks")
     .addEventListener("click", () => ui.showView(tracksBackView));
+  // Acces direct a la grille : sans lui, arriver ici depuis la vue lecture
+  // obligerait a revenir en arriere avant de pouvoir changer de playlist.
+  document
+    .getElementById("tracks-to-playlists")
+    .addEventListener("click", () => ui.showView("playlists"));
   document
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
