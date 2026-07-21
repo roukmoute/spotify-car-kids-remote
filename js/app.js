@@ -672,9 +672,11 @@ function wireEvents() {
     requestWakeLock();
   });
 
-  // Le wake lock et le plein ecran exigent un geste utilisateur : on
-  // s'accroche au premier contact avec l'ecran.
-  document.addEventListener("pointerdown", requestWakeLock, { once: true });
+  // `click` et non `pointerdown` : au doigt, un pointerdown n'accorde PAS
+  // l'activation utilisateur exigee par le wake lock. Le brancher sur
+  // pointerdown fonctionne a la souris et echoue silencieusement sur la
+  // tablette — exactement le genre de bug qu'on ne voit qu'en vrai.
+  document.addEventListener("click", requestWakeLock, { once: true });
 }
 
 function registerServiceWorker() {
