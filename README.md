@@ -20,8 +20,10 @@ réseau du tout.
   icône — pour choisir une chanson précise et pas seulement lancer le tout
 - Paroles synchronisées en grand, qui défilent toutes seules
 
-Depuis la vue lecture, une pastille affiche la playlist en cours : un appui
-ouvre sa liste de titres, positionnée sur le morceau du moment.
+Depuis la vue lecture, deux accès directs, un seul appui chacun : le bouton
+en damier ouvre toutes les playlists, la pastille verte ouvre les chansons de
+la playlist en cours, positionnée sur le morceau du moment. Chaque bouton
+retour ramène exactement d'où l'on vient.
 
 ## Comment ça marche
 

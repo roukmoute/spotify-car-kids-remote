@@ -114,8 +114,9 @@ img {
 /* Le bouton en coin est en position fixed : il ne pousse rien, donc sans
    cette reserve le titre et l'artiste passeraient dessous. Largeur du bouton
    (5.2rem) + sa marge droite (1rem) + un espace. Seuls les elements hauts
-   sont concernes ; les paroles occupent toute la largeur. */
-.context-chip,
+   sont concernes ; les paroles occupent toute la largeur.
+   La pastille, elle, se limite par max-width : un padding lui donnerait une
+   zone cliquable invisible qui s'etendrait jusque sous le bouton. */
 #title,
 #artist {
   padding-right: 6.8rem;
@@ -345,19 +346,29 @@ img {
 
 /* ---------- Pastille "playlist en cours" ---------- */
 
-/* Simple etiquette, volontairement PAS un bouton : la navigation passe
-   entierement par le gros bouton en coin. Un element d'apparence cliquable
-   qui ne l'est pas est pire que pas d'element du tout. */
+/* Acces direct aux chansons de la playlist en cours. C'est une grosse cible
+   large : le nom de la playlist fait lui-meme partie de la zone tactile. */
 .context-chip {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.55rem;
   align-self: flex-start;
-  max-width: 100%;
-  margin: 0 0 0.25rem;
+  /* Ne doit pas passer sous le bouton en coin (5.2rem + 1rem de marge). */
+  max-width: calc(100% - 6.8rem);
+  min-height: 3.4rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--accent);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 700;
+  transition: transform 90ms ease-out, background-color 90ms ease-out;
+}
+
+.context-chip:active {
+  transform: scale(0.96);
+  background: var(--surface-hi);
 }
 
 .context-chip svg {

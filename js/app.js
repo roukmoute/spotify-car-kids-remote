@@ -362,7 +362,12 @@ async function loadPlaylists() {
     const playlists = await api.getPlaylists();
     playlistById.clear();
     for (const p of playlists) playlistById.set(p.id, p);
-    ui.renderPlaylists(playlists, (p) => openPlaylist(p));
+    ui.renderPlaylists(playlists, (p) => openPlaylist(p, { from: "playlists" }));
+
+    // La pastille a pu etre evaluee avant que ce cache soit peuplé : le nom
+    // etait alors introuvable localement, et l'appel de repli a pu echouer.
+    // On la reevalue maintenant que les playlists sont connues.
+    refreshContextChip();
   } catch (err) {
     handleError(err, { silent: true });
   }
@@ -370,14 +375,21 @@ async function loadPlaylists() {
 
 /** Playlist actuellement affichee dans la vue titres. */
 let viewedPlaylist = null;
+/**
+ * Vue vers laquelle revient le bouton retour de la vue titres.
+ * On y revient toujours d'ou l'on vient : c'est le seul comportement qu'un
+ * bouton "retour" peut avoir sans surprendre.
+ */
+let tracksBackView = "playlists";
 
 /**
  * Ouvre la liste des titres d'une playlist.
  * @param {{id:string, uri:string, name:string}} playlist
- * @param {{focusCurrent?: boolean}} [options]
+ * @param {{from?: string, focusCurrent?: boolean}} [options]
  */
-async function openPlaylist(playlist, { focusCurrent = false } = {}) {
+async function openPlaylist(playlist, { from = "playlists", focusCurrent = false } = {}) {
   viewedPlaylist = playlist;
+  tracksBackView = from;
 
   ui.showTracksMessage("Chargement...", playlist.name);
   ui.showView("tracks");
@@ -428,20 +440,17 @@ function currentPlaylistId() {
 }
 
 /**
- * Unique point d'entree depuis la vue lecture : les chansons de la playlist
- * en cours si on en joue une, sinon la grille des playlists.
+ * Depuis la pastille : les chansons de la playlist en cours, positionnees sur
+ * le morceau du moment. Le retour ramenera a la vue lecture.
  */
-async function openPlaylistsOrCurrent() {
+async function openCurrentContext() {
   const id = currentPlaylistId();
-  if (!id) {
-    ui.showView("playlists");
-    return;
-  }
+  if (!id) return;
 
   // Cas courant : la playlist est deja connue, on bascule sans latence.
   const known = playlistById.get(id);
   if (known) {
-    openPlaylist(known, { focusCurrent: true });
+    openPlaylist(known, { from: "player", focusCurrent: true });
     return;
   }
 
@@ -449,10 +458,11 @@ async function openPlaylistsOrCurrent() {
   // suite pour que l'appui soit ressenti, puis on resout le nom.
   ui.showTracksMessage("Chargement...", "");
   ui.showView("tracks");
+  tracksBackView = "player";
 
   const fetched = await resolveCurrentPlaylist();
-  if (fetched) openPlaylist(fetched, { focusCurrent: true });
-  else ui.showView("playlists");
+  if (fetched) openPlaylist(fetched, { from: "player", focusCurrent: true });
+  else ui.showView("player");
 }
 
 /**
@@ -575,15 +585,19 @@ function wireEvents() {
   ui.els.btnPrev.addEventListener("click", skipPrevious);
 
   /* --- Navigation --- */
-  // Hierarchie volontairement lineaire, pour qu'un enfant n'ait jamais qu'un
-  // seul bouton retour a comprendre :
-  //   lecture  --[liste]-->  chansons  --[retour]-->  playlists  --[retour]--> lecture
+  // Deux acces directs depuis la vue lecture, un seul appui chacun :
+  //   bouton grille   -> toutes les playlists
+  //   pastille        -> les chansons de la playlist en cours
+  // Et chaque bouton retour ramene exactement d'ou l'on vient.
   document
     .getElementById("open-playlists")
-    .addEventListener("click", openPlaylistsOrCurrent);
+    .addEventListener("click", () => ui.showView("playlists"));
+  document
+    .getElementById("current-context")
+    .addEventListener("click", openCurrentContext);
   document
     .getElementById("close-tracks")
-    .addEventListener("click", () => ui.showView("playlists"));
+    .addEventListener("click", () => ui.showView(tracksBackView));
   document
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
