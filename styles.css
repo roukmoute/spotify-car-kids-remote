@@ -77,69 +77,59 @@ img {
 
 /* ---------- Vue LECTURE ---------- */
 
+/* Colonne unique : bandeau compact en haut, paroles au milieu, transport en
+   bas. La pochette occupait auparavant 38 % de la largeur pour une valeur
+   quasi nulle — elle sert a reconnaitre le morceau d'un coup d'oeil, pas a
+   etre contemplee. En vignette, elle rend toute la largeur aux paroles. */
 #view-player {
-  display: grid;
-  grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 1.2rem;
-  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem 1rem;
 }
 
-.cover-wrap {
-  grid-column: 1;
-  grid-row: 1;
+.player-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 0;
+  gap: 0.8rem;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 #cover {
-  width: 100%;
-  aspect-ratio: 1 / 1;
+  width: 3.8rem;
+  height: 3.8rem;
+  flex: 0 0 auto;
   object-fit: cover;
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface);
   /* decode async : evite de bloquer le thread principal sur un SoC lent */
 }
 
-.track-meta {
-  grid-column: 2;
-  grid-row: 1;
+.head-text {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  /* Sans min-width:0, un titre long empeche le conteneur flex de retrecir
+     et pousse les boutons hors de l'ecran. */
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-/* Le bouton en coin est en position fixed : il ne pousse rien, donc sans
-   cette reserve le titre et l'artiste passeraient dessous. Largeur du bouton
-   (5.2rem) + sa marge droite (1rem) + un espace. Seuls les elements hauts
-   sont concernes ; les paroles occupent toute la largeur.
-   La pastille, elle, se limite par max-width : un padding lui donnerait une
-   zone cliquable invisible qui s'etendrait jusque sous le bouton. */
-#title,
-#artist {
-  padding-right: 6.8rem;
-}
-
+/* Une seule ligne chacun : dans un bandeau, chaque ligne supplementaire est
+   prise directement sur les paroles. */
 #title {
   margin: 0;
-  /* Volontairement plus mesure que la pastille : sur cet ecran, l'espace
-     vertical se dispute entre l'en-tete et les paroles, et ce sont les
-     paroles qui comptent. */
-  font-size: 1.85rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  line-height: 1.1;
-  /* 2 lignes max, ellipsis */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.2;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #artist {
-  margin: 0.15rem 0 0;
-  font-size: 1.15rem;
+  margin: 0;
+  font-size: 1.05rem;
   color: var(--text-dim);
   font-weight: 600;
   white-space: nowrap;
@@ -150,9 +140,8 @@ img {
 /* ---------- Paroles ---------- */
 
 #lyrics {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  margin-top: 0.5rem;
   overflow: hidden; /* le scroll est pilote par transform, pas par scrollTop */
   position: relative;
   mask-image: linear-gradient(
@@ -220,12 +209,11 @@ img {
 /* ---------- Barre de transport ---------- */
 
 .transport {
-  grid-column: 1 / -1;
-  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 1.4rem;
+  flex: 0 0 auto;
 }
 
 .btn {
@@ -268,16 +256,10 @@ img {
   pointer-events: none;
 }
 
-/* Bouton d'acces aux chansons, en overlay coin haut droit.
-   Il herite volontairement de la taille de .btn : c'est le seul moyen de
-   quitter la vue lecture, il doit etre aussi facile a viser que lecture ou
-   suivant. */
-.btn-corner {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  background: var(--surface);
-  z-index: 5;
+/* Boutons du bandeau : meme taille que le transport, mais ils ne doivent
+   jamais retrecir quand le titre est long. */
+.player-head .btn {
+  flex: 0 0 auto;
 }
 
 /* ---------- Vue PLAYLISTS ---------- */
@@ -355,11 +337,13 @@ img {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  align-self: flex-start;
-  /* Ne doit pas passer sous le bouton en coin (5.2rem + 1rem de marge). */
-  max-width: calc(100% - 6.8rem);
+  /* Dans le bandeau, la pastille cede la place avant le titre : elle se
+     tronque plutot que de pousser les boutons hors de l'ecran. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
   min-height: 4rem;
-  margin: 0 0 0.55rem;
+  margin: 0;
   padding: 0.6rem 1.5rem;
   border-radius: 999px;
   background: var(--surface);
@@ -641,44 +625,52 @@ input[type="text"]:focus {
 
 /* ---------- Portrait / petits ecrans : on empile ---------- */
 
+/* En portrait, la largeur manque : la pastille passerait a la ligne ou
+   ecraserait le titre. On la masque — l'info reste accessible en ouvrant les
+   chansons, et les deux boutons du bandeau suffisent a naviguer. */
 @media (orientation: portrait) {
-  #view-player {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-  }
-
-  .cover-wrap {
-    grid-column: 1;
-    grid-row: 1;
-    max-height: 34vh;
-  }
-
-  #cover {
-    width: auto;
-    height: 100%;
-    max-height: 34vh;
-  }
-
-  .track-meta {
-    grid-column: 1;
-    grid-row: 2;
+  .context-chip {
+    display: none !important;
   }
 }
 
-/* Ecrans tres bas (600px de haut) : on reduit la place des paroles */
-@media (max-height: 620px) {
+/* Ecrans tres bas. C'est le cas reel de la tablette dans un onglet de
+   navigateur : barre d'onglets, barre d'adresse et barre de navigation
+   Android laissent parfois moins de 450px utiles. Tout ce qui n'est pas les
+   paroles se resserre. */
+@media (max-height: 560px) {
   .btn {
-    width: 4.6rem;
-    height: 4.6rem;
+    width: 4.4rem;
+    height: 4.4rem;
   }
 
   .btn-primary {
-    width: 5.8rem;
-    height: 5.8rem;
+    width: 5.4rem;
+    height: 5.4rem;
+  }
+
+  #cover {
+    width: 3rem;
+    height: 3rem;
   }
 
   #title {
-    font-size: 1.8rem;
+    font-size: 1.3rem;
+  }
+
+  #artist {
+    font-size: 0.95rem;
+  }
+
+  .context-chip {
+    min-height: 3.2rem;
+    font-size: 1.05rem;
+    padding: 0.4rem 1rem;
+  }
+
+  #view-player {
+    gap: 0.45rem;
+    padding: 0.5rem 0.8rem;
   }
 }
 

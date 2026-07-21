@@ -546,6 +546,49 @@ function stopTimers() {
   clearInterval(lyricsTimer);
 }
 
+/* ------------------------------------------------------------------ */
+/* Plein ecran                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sur Android, le plein ecran masque a la fois l'interface du navigateur
+ * (onglets, barre d'adresse) et la barre de navigation systeme : c'est ce qui
+ * rend le plus de place sur cet ecran.
+ *
+ * Les prefixes `webkit` restent necessaires : beaucoup de navigateurs Android
+ * legers sont des habillages de la WebView systeme, dont la version peut etre
+ * ancienne sur une tablette d'entree de gamme.
+ */
+function isFullscreen() {
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+async function toggleFullscreen() {
+  try {
+    if (isFullscreen()) {
+      await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
+      return;
+    }
+    const el = document.documentElement;
+    // `navigationUI: "hide"` demande explicitement a masquer la barre de
+    // navigation ; ignore la ou ce n'est pas supporte, sans consequence.
+    await (el.requestFullscreen?.({ navigationUI: "hide" }) ??
+      el.webkitRequestFullscreen?.());
+  } catch {
+    // Refuse (pas de geste utilisateur valide, ou mode non autorise).
+    ui.toast("Plein ecran indisponible sur ce navigateur.");
+  }
+}
+
+function syncFullscreenIcon() {
+  const icon = document.getElementById("fullscreen-icon");
+  const btn = document.getElementById("toggle-fullscreen");
+  if (!icon || !btn) return;
+  const full = isFullscreen();
+  icon.setAttribute("href", full ? "#i-collapse" : "#i-expand");
+  btn.setAttribute("aria-label", full ? "Quitter le plein ecran" : "Plein ecran");
+}
+
 /** Empeche la tablette de s'eteindre pendant le trajet. */
 async function requestWakeLock() {
   if (!("wakeLock" in navigator)) return;
@@ -611,6 +654,15 @@ function wireEvents() {
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
   document.getElementById("play-all").addEventListener("click", playWholePlaylist);
+
+  /* --- Plein ecran --- */
+  document
+    .getElementById("toggle-fullscreen")
+    .addEventListener("click", toggleFullscreen);
+  // L'icone doit refleter l'etat reel : l'utilisateur peut sortir du plein
+  // ecran par un geste systeme, sans passer par notre bouton.
+  document.addEventListener("fullscreenchange", syncFullscreenIcon);
+  document.addEventListener("webkitfullscreenchange", syncFullscreenIcon);
 
   /* --- Reprise apres mise en veille --- */
   document.addEventListener("visibilitychange", () => {
