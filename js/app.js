@@ -107,6 +107,17 @@ function showSetup() {
   document.getElementById("client-id-input").value = auth.getClientId();
 }
 
+/**
+ * L'URI de redirection depend de l'URL d'ou l'app est servie : elle differe
+ * entre le poste de dev et GitHub Pages, et les deux doivent etre declarees.
+ * On l'affiche sur l'ecran de connexion parce que c'est la qu'on se trouve
+ * quand Spotify refuse la redirection — l'ecran de setup est deja passe.
+ */
+function showRedirectHint() {
+  const el = document.getElementById("login-redirect");
+  if (el) el.textContent = auth.redirectUri();
+}
+
 async function start() {
   ui.showView("player");
   await tick(); // premier etat immediat, sans attendre le timer
@@ -391,6 +402,8 @@ async function requestWakeLock() {
 }
 
 function wireEvents() {
+  showRedirectHint();
+
   /* --- Setup --- */
   document.getElementById("setup-save").addEventListener("click", () => {
     const value = document.getElementById("client-id-input").value.trim();

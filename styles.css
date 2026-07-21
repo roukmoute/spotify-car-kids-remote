@@ -370,6 +370,28 @@ img {
   transform: scale(0.97);
 }
 
+/* Aide au diagnostic OAuth : discrete, mais l'URI doit rester selectionnable
+   pour etre copiee vers le dashboard Spotify. */
+.hint {
+  font-size: 0.9rem;
+  color: var(--lyric-idle);
+  max-width: 40rem;
+  line-height: 1.5;
+}
+
+.hint code {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.95rem;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .btn-ghost {
   background: var(--surface);
   color: var(--text);

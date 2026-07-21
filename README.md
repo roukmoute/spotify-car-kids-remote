@@ -66,8 +66,20 @@ Deux conséquences pratiques :
      https://roukmoute.github.io/spotify-car-kids-remote/
      http://127.0.0.1:5173/
      ```
-     La seconde sert au développement en local. Le slash final compte, et
-     `localhost` n'est **pas** accepté par Spotify — il faut bien `127.0.0.1`.
+     La seconde sert au développement en local.
+
+     Deux pièges, tous les deux sanctionnés par le même message
+     `redirect_uri: Not matching configuration` au moment de se connecter :
+     - **le slash final compte** — Spotify compare les chaînes à l'identique,
+       donc `http://127.0.0.1:5173` (sans slash) ne correspond pas à ce que
+       l'app envoie ;
+     - **`localhost` est refusé**, il faut l'adresse `127.0.0.1`. C'est la
+       seule forme pour laquelle Spotify tolère encore du `http://` en clair
+       (exception loopback ; tout le reste doit être en HTTPS depuis avril
+       2025).
+
+     En cas de doute, l'écran de connexion de l'app affiche l'URI exacte
+     à déclarer, prête à copier.
    - *Which API/SDKs are you planning to use* : cocher **Web API**
 3. Valider, puis ouvrir **Settings** et copier le **Client ID**.
 
