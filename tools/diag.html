@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diagnostic</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 8px;
+        background: #000;
+        color: #0f0;
+        font: 13px/1.35 monospace;
+      }
+      b { color: #ff0; }
+      .ko { color: #f55; }
+      .ok { color: #0f0; }
+      td { padding: 0 6px 0 0; vertical-align: top; }
+    </style>
+  </head>
+  <body>
+    <table id="out"></table>
+    <script>
+      /* Page de diagnostic, destinee a etre lue par capture d'ecran adb sur
+         l'appareil cible. Elle n'a aucune dependance et n'ecrit rien. */
+      const rows = [];
+      const add = (k, v, ok) =>
+        rows.push(
+          "<tr><td><b>" +
+            k +
+            "</b></td><td class='" +
+            (ok === undefined ? "" : ok ? "ok" : "ko") +
+            "'>" +
+            v +
+            "</td></tr>",
+        );
+
+      add("viewport", innerWidth + " x " + innerHeight);
+      add("dpr", devicePixelRatio);
+      add("screen", screen.width + " x " + screen.height);
+      add("UA", navigator.userAgent.replace(/^Mozilla\/5\.0 /, ""));
+
+      const chrome = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1];
+      add("moteur Chromium", chrome || "inconnu", Number(chrome) >= 90);
+
+      /* --- Capacites JS --- */
+      add("service worker", "serviceWorker" in navigator, "serviceWorker" in navigator);
+      add(
+        "plein ecran",
+        !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
+        !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
+      );
+      add("fullscreenEnabled", document.fullscreenEnabled);
+      add("wakeLock", "wakeLock" in navigator, "wakeLock" in navigator);
+      add("crypto.subtle", !!(window.crypto && crypto.subtle), !!(window.crypto && crypto.subtle));
+
+      /* --- Capacites CSS, testees reellement --- */
+      const sup = (p, v) => CSS.supports(p, v);
+      add("CSS clamp()", sup("font-size", "clamp(13px,1.65vw,20px)"), sup("font-size", "clamp(13px,1.65vw,20px)"));
+      add("flex gap", sup("gap", "1rem"), sup("gap", "1rem"));
+      add("content-visibility", sup("content-visibility", "auto"), sup("content-visibility", "auto"));
+      add("contain-intrinsic auto", sup("contain-intrinsic-size", "auto 3rem"), sup("contain-intrinsic-size", "auto 3rem"));
+      add("contain-intrinsic simple", sup("contain-intrinsic-size", "3rem"), sup("contain-intrinsic-size", "3rem"));
+      add("aspect-ratio", sup("aspect-ratio", "1/1"), sup("aspect-ratio", "1/1"));
+      add("mask-image", sup("-webkit-mask-image", "linear-gradient(#000,#fff)") || sup("mask-image", "linear-gradient(#000,#fff)"));
+      add("line-clamp", sup("-webkit-line-clamp", "2"));
+      add("overscroll-behavior", sup("overscroll-behavior", "none"));
+
+      /* --- Taille de police racine reellement appliquee --- */
+      const probe = document.createElement("div");
+      probe.style.fontSize = "clamp(13px, 1.65vw, 20px)";
+      document.body.appendChild(probe);
+      add("clamp calcule", getComputedStyle(probe).fontSize);
+      probe.remove();
+
+      /* --- Mode d'affichage (installe ou onglet) --- */
+      for (const m of ["fullscreen", "standalone", "minimal-ui", "browser"]) {
+        if (matchMedia("(display-mode: " + m + ")").matches) add("display-mode", m);
+      }
+
+      document.getElementById("out").innerHTML = rows.join("");
+    </script>
+  </body>
+</html>

@@ -603,9 +603,15 @@ input[type="text"]:focus {
   position: fixed;
   left: 50%;
   bottom: 1.2rem;
-  transform: translate(-50%, 150%);
+  /* Masquage par visibility et non par un decalage en pourcentage : celui-ci
+     depend de la hauteur de l'element, et un toast vide (au demarrage, avant
+     tout message) est trop court pour sortir de l'ecran — il en depassait
+     7px, visibles comme un lisere rose en bas de la tablette. */
+  transform: translate(-50%, 0.8rem);
+  opacity: 0;
+  visibility: hidden;
   /* Purement informatif : sans ca, l'element reste une zone cliquable
-     invisible au-dessus des boutons de transport, meme hors ecran. */
+     invisible au-dessus des boutons de transport. */
   pointer-events: none;
   background: var(--danger);
   color: #fff;
@@ -614,13 +620,23 @@ input[type="text"]:focus {
   padding: 0.85rem 1.4rem;
   border-radius: 999px;
   z-index: 50;
-  transition: transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* `visibility` differee a la fin de la sortie, pour ne pas couper le fondu. */
+  transition:
+    transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 240ms linear,
+    visibility 0s linear 240ms;
   max-width: 90vw;
   text-align: center;
 }
 
 #toast.is-shown {
   transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 240ms linear,
+    visibility 0s linear;
 }
 
 /* ---------- Portrait / petits ecrans : on empile ---------- */
