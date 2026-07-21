@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bench cache</title>
+    <style>
+      body { margin: 0; padding: 8px; background: #000; color: #0f0; font: 13px/1.4 monospace; }
+      b { color: #ff0; }
+      .bad { color: #f55; }
+      .good { color: #0f0; }
+    </style>
+  </head>
+  <body>
+    <div id="out">mesure en cours...</div>
+    <script type="module">
+      /* Mesure le cout REEL du cache de paroles, en passant par le module de
+         production, sur l'appareil cible. A lire par capture d'ecran adb.
+
+         Compare :
+           - l'ancien modele (tout le cache dans une seule clef JSON)
+           - le modele en place (une clef par piste)
+      */
+      import { fetchLyrics, clearLyricsCache } from "../js/lyrics.js";
+
+      const NB = 120;
+      const LIGNES = 68;
+      const out = [];
+      const log = (k, v, cls) =>
+        out.push("<b>" + k + "</b> : <span class='" + (cls || "") + "'>" + v + "</span>");
+      const show = () => (document.getElementById("out").innerHTML = out.join("<br>"));
+
+      const piste = (i) => ({
+        id: "bench" + i,
+        name: "Titre " + i,
+        artists: [{ name: "Artiste" }],
+        album: { name: "Album" },
+        duration_ms: 200000,
+      });
+
+      /* Reponse LRCLIB simulee : evite le reseau, mesure le seul cout local. */
+      const lrc = Array.from({ length: LIGNES }, (_, n) =>
+        "[" + String(Math.floor(n / 60)).padStart(2, "0") + ":" +
+        String(n % 60).padStart(2, "0") + ".00] Une ligne de paroles typique numero " + n,
+      ).join("\n");
+
+      window.fetch = async () =>
+        new Response(
+          JSON.stringify({ instrumental: false, syncedLyrics: lrc, plainLyrics: "" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+
+      clearLyricsCache();
+
+      /* --- Remplissage du cache par le chemin de production --- */
+      const tRemplissage = performance.now();
+      for (let i = 0; i < NB; i++) await fetchLyrics(piste(i));
+      log("remplissage " + NB + " titres", Math.round(performance.now() - tRemplissage) + " ms");
+
+      /* Poids reel occupe */
+      let total = 0;
+      for (const k in localStorage) {
+        if (Object.prototype.hasOwnProperty.call(localStorage, k)) total += localStorage[k].length;
+      }
+      log("poids du cache", Math.round(total / 1024) + " Ko");
+
+      /* --- Cout d'un cache hit, cache plein (le cas courant) --- */
+      const TOURS = 60;
+      const t0 = performance.now();
+      for (let i = 0; i < TOURS; i++) await fetchLyrics(piste(i % NB));
+      const parHit = (performance.now() - t0) / TOURS;
+
+      log("--- MODELE EN PLACE (une clef par piste) ---", "");
+      log("cout d'un changement de piste", parHit.toFixed(2) + " ms", parHit < 16 ? "good" : "bad");
+
+      /* --- Comparaison : l'ancien modele, meme volume de donnees --- */
+      const blob = {};
+      for (let i = 0; i < NB; i++) {
+        blob["bench" + i] = { v: JSON.parse(localStorage.getItem("scr.lyr.bench" + i)), t: i };
+      }
+      localStorage.setItem("bench.blob", JSON.stringify(blob));
+      const t1 = performance.now();
+      for (let i = 0; i < 10; i++) {
+        const o = JSON.parse(localStorage.getItem("bench.blob"));
+        o["nouveau"] = o["bench0"];
+        localStorage.setItem("bench.blob", JSON.stringify(o));
+      }
+      const ancien = (performance.now() - t1) / 10;
+      localStorage.removeItem("bench.blob");
+
+      log("--- ANCIEN MODELE (blob unique) ---", "");
+      log("cout d'un changement de piste", ancien.toFixed(1) + " ms", ancien < 16 ? "good" : "bad");
+      log("GAIN", "x" + (ancien / parHit).toFixed(0), "good");
+      log("images perdues evitees (60 fps)", Math.round(ancien / 16.7));
+
+      clearLyricsCache();
+      log("cache purge", "ok");
+      show();
+    </script>
+  </body>
+</html>
