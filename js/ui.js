@@ -17,6 +17,7 @@ const els = {
     player: $("view-player"),
     playlists: $("view-playlists"),
     tracks: $("view-tracks"),
+    accounts: $("view-accounts"),
     error: $("view-error"),
   },
   cover: $("cover"),
@@ -34,6 +35,9 @@ const els = {
   tracksTitle: $("tracks-title"),
   currentContext: $("current-context"),
   currentContextName: $("current-context-name"),
+  accountsList: $("accounts-list"),
+  activeAvatar: $("active-avatar"),
+  activeInitial: $("active-initial"),
   toast: $("toast"),
   errorTitle: $("error-title"),
   errorMsg: $("error-msg"),
@@ -167,6 +171,74 @@ export function renderPlaylists(playlists, onPick) {
   }
 
   els.plGrid.replaceChildren(frag);
+}
+
+/* ------------------------------------------------------------------ */
+/* Comptes                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Pastille du compte actif, dans l'en-tete des playlists. */
+export function renderActiveAccount(account) {
+  const initial = (account?.name || "?").trim().charAt(0).toUpperCase();
+  els.activeInitial.textContent = initial;
+  if (account?.image) {
+    els.activeAvatar.src = account.image;
+  } else {
+    // Pas de photo : on retire l'attribut pour que le repli CSS sur
+    // l'initiale s'applique, plutot que d'afficher une image cassee.
+    els.activeAvatar.removeAttribute("src");
+  }
+}
+
+/**
+ * @param {{id:string, name:string, image:string|null, active:boolean}[]} accounts
+ * @param {{onSwitch:(id:string)=>void, onRemove:(id:string)=>void}} handlers
+ */
+export function renderAccounts(accounts, { onSwitch, onRemove }) {
+  const frag = document.createDocumentFragment();
+
+  for (const account of accounts) {
+    const row = document.createElement("div");
+    row.className = "account-row" + (account.active ? " is-active" : "");
+
+    const pick = document.createElement("button");
+    pick.type = "button";
+    pick.className = "acc-pick";
+
+    const pic = document.createElement("img");
+    pic.className = "acc-pic";
+    pic.alt = "";
+    pic.decoding = "async";
+    if (account.image) pic.src = account.image;
+
+    const name = document.createElement("span");
+    name.className = "acc-name";
+    name.textContent = account.name;
+
+    const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    mark.setAttribute("class", "acc-mark");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#i-check");
+    mark.append(use);
+
+    pick.append(pic, name, mark);
+    pick.addEventListener("click", () => onSwitch(account.id));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "acc-remove";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Retirer " + account.name);
+    remove.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onRemove(account.id);
+    });
+
+    row.append(pick, remove);
+    frag.append(row);
+  }
+
+  els.accountsList.replaceChildren(frag);
 }
 
 /* ------------------------------------------------------------------ */

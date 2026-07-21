@@ -509,6 +509,165 @@ img {
   opacity: 1;
 }
 
+/* ---------- Comptes ---------- */
+
+/* Volontairement plus petit que les boutons ronds : c'est une commande de
+   parent, pas une cible pour un enfant qui cherche sa chanson. Reste tres
+   au-dessus du seuil tactile. */
+.avatar-btn {
+  position: relative;
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-hi);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 90ms ease-out;
+}
+
+.avatar-btn:active {
+  transform: scale(0.92);
+}
+
+.avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Repli quand le compte n'a pas de photo : son initiale. */
+.avatar-btn img:not([src]),
+.avatar-btn img[src=""] {
+  display: none;
+}
+
+.avatar-btn span {
+  position: absolute;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.avatar-btn img[src]:not([src=""]) + span {
+  display: none;
+}
+
+.accounts-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.25rem 0.8rem;
+  border-radius: 14px;
+}
+
+.account-row.is-active {
+  background: var(--surface);
+}
+
+/* La zone de bascule occupe toute la ligne sauf le bouton de retrait, pour
+   qu'un appui n'importe ou change de compte. */
+.acc-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 4rem;
+  padding: 0.4rem 0;
+  border-radius: 12px;
+  text-align: left;
+  transition: transform 90ms ease-out;
+}
+
+.acc-pick:active {
+  transform: scale(0.985);
+}
+
+.acc-pick .acc-pic {
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-hi);
+}
+
+.acc-pick .acc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-row.is-active .acc-name {
+  color: var(--accent);
+}
+
+.acc-pic:not([src]),
+.acc-pic[src=""] {
+  /* Pas de photo : le rond gris tient lieu de repli. */
+  content-visibility: hidden;
+}
+
+.acc-pick .acc-mark {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: var(--accent);
+  opacity: 0;
+}
+
+.account-row.is-active .acc-mark {
+  opacity: 1;
+}
+
+/* Retirer un compte : discret, pour ne pas etre touche par megarde. */
+.acc-remove {
+  flex: 0 0 auto;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.acc-remove:active {
+  background: var(--surface-hi);
+  color: var(--danger);
+}
+
+.btn-add-account {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-top: 0.4rem;
+}
+
+.accounts-hint {
+  color: var(--lyric-idle);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 0.6rem 1rem 0;
+  margin: 0;
+}
+
 /* ---------- Ecrans setup / login / erreur ---------- */
 
 .centered {

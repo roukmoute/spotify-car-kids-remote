@@ -121,8 +121,120 @@ function showRedirectHint() {
   if (el) el.textContent = auth.redirectUri();
 }
 
+/* ------------------------------------------------------------------ */
+/* Comptes                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Resout l'identite du compte actif si elle est encore inconnue.
+ *
+ * C'est le cas juste apres une connexion — on detient les jetons sans savoir
+ * a qui ils appartiennent — et lors de la migration depuis l'ancien format
+ * mono-compte, ou la session existante n'avait pas d'identite attachee.
+ */
+async function ensureAccountIdentity() {
+  if (!auth.hasPendingAccount()) return;
+
+  let me;
+  try {
+    me = await api.getMe();
+  } catch (err) {
+    // Piege majeur du mode developpement : pour un compte absent de la liste
+    // du dashboard, l'autorisation OAuth REUSSIT — jetons valides compris — et
+    // l'echec n'apparait qu'ici. Sans ce controle, l'application afficherait
+    // un compte "connecte" qui echoue ensuite sur chaque appel.
+    if (err?.reason === "NOT_REGISTERED") {
+      auth.discardPendingAccount();
+      ui.showError(
+        "Ce compte Spotify n'est pas autorise sur l'application. Ajoute son adresse " +
+          "e-mail Spotify dans le dashboard developpeur, rubrique User Management.",
+        { title: "Compte non autorise", actionLabel: "Retour" },
+      );
+      ui.els.errorAction.onclick = () => location.reload();
+      return;
+    }
+    // Autre panne (reseau) : la session reste utilisable, on reessaiera au
+    // prochain demarrage.
+    handleError(err, { silent: true });
+    return;
+  }
+
+  if (!me?.id) return;
+  const result = auth.finalizePendingAccount(me);
+
+  // Spotify n'a pas de selecteur de compte : si la session web etait deja
+  // ouverte, on vient de re-autoriser la MEME personne en croyant en ajouter
+  // une autre. Il faut le dire, sinon l'utilisateur cherche longtemps.
+  if (result?.known) {
+    ui.toast("Ce compte etait deja connecte. Utilise une fenetre privee pour en ajouter un autre.", 6000);
+  }
+}
+
+function renderAccountsView() {
+  ui.renderActiveAccount(auth.getActiveAccount());
+  ui.renderAccounts(auth.listAccounts(), {
+    onSwitch: switchToAccount,
+    onRemove: removeAccountAndRefresh,
+  });
+}
+
+/** Bascule de compte : aucune reconnexion, le jeton de l'autre est deja la. */
+async function switchToAccount(id) {
+  if (id === auth.activeAccountId()) {
+    ui.showView("playlists");
+    return;
+  }
+
+  auth.switchAccount(id);
+
+  // Tout ce qui est affiche appartient a l'ancien compte : etat du lecteur,
+  // playlists, titres. On repart d'une page blanche plutot que de melanger.
+  resetForAccountChange();
+  ui.showView("player");
+
+  await tick();
+  scheduleNextPoll();
+  loadPlaylists();
+  renderAccountsView();
+}
+
+function removeAccountAndRefresh(id) {
+  const wasActive = id === auth.activeAccountId();
+  auth.removeAccount(id);
+
+  if (!auth.isLoggedIn()) {
+    stopTimers();
+    ui.showView("login");
+    return;
+  }
+
+  if (wasActive) {
+    resetForAccountChange();
+    tick().then(() => scheduleNextPoll());
+    loadPlaylists();
+  }
+  renderAccountsView();
+}
+
+/** Efface tout ce qui est propre a un compte donne. */
+function resetForAccountChange() {
+  playlistById.clear();
+  viewedPlaylist = null;
+  state.player = null;
+  state.trackId = null;
+  state.contextUri = null;
+  state.deviceId = null;
+  state.emptyStates = 0;
+  ui.renderTrack(null);
+  ui.renderContext(null);
+  ui.clearLyrics("Chargement...");
+  ui.renderPlaylists([], () => {});
+}
+
 async function start() {
   ui.showView("player");
+  await ensureAccountIdentity();
+  renderAccountsView();
   await tick(); // premier etat immediat, sans attendre le timer
   scheduleNextPoll();
   startLyricsTicker();
@@ -382,8 +494,17 @@ function applyPlaylists(playlists) {
  * Avec, elle est la immediatement et se corrige silencieusement au retour du
  * reseau.
  */
+/**
+ * Les caches sont propres a un compte : sans ce prefixe, basculer afficherait
+ * les playlists de l'autre personne.
+ */
+function scoped(key) {
+  return auth.activeAccountId() + "." + key;
+}
+
 async function loadPlaylists() {
-  const cached = store.read("playlists");
+  const cacheKey = scoped("playlists");
+  const cached = store.read(cacheKey);
   if (cached?.length) applyPlaylists(cached);
 
   let playlists;
@@ -399,7 +520,7 @@ async function loadPlaylists() {
   // pour rien coute cher sur ce SoC, et ferait sauter le defilement en cours.
   if (JSON.stringify(playlists) !== JSON.stringify(cached)) {
     applyPlaylists(playlists);
-    store.write("playlists", playlists);
+    store.write(cacheKey, playlists);
   }
 }
 
@@ -422,7 +543,7 @@ async function openPlaylist(playlist, { from = "playlists", focusCurrent = false
   tracksBackView = from;
   ui.showView("tracks");
 
-  const cacheKey = "tracks." + playlist.id;
+  const cacheKey = scoped("tracks." + playlist.id);
   const cached = store.read(cacheKey);
 
   // Version en cache affichee immediatement : ouvrir une playlist deja vue
@@ -456,9 +577,10 @@ async function openPlaylist(playlist, { from = "playlists", focusCurrent = false
   }
 
   store.write(cacheKey, tracks);
-  // Nombre de playlists dont on garde les titres. Au-dela, les moins
-  // recemment ouvertes sont oubliees : une playlist de 200 titres pese ~25 Ko.
-  store.trackRecent("tracks.", cacheKey, 12);
+  // Nombre de playlists dont on garde les titres, tous comptes confondus.
+  // Au-dela, les moins recemment ouvertes sont oubliees : une playlist de
+  // 200 titres pese ~14 Ko.
+  store.trackRecent("tracks", cacheKey, 12);
 
   // Rien n'a bouge : on evite de reconstruire la liste et de perdre la
   // position de defilement de l'enfant en train de choisir.
@@ -701,6 +823,21 @@ function wireEvents() {
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
   document.getElementById("play-all").addEventListener("click", playWholePlaylist);
+
+  /* --- Comptes --- */
+  document.getElementById("open-accounts").addEventListener("click", () => {
+    renderAccountsView();
+    ui.showView("accounts");
+  });
+  document
+    .getElementById("close-accounts")
+    .addEventListener("click", () => ui.showView("playlists"));
+  document.getElementById("add-account").addEventListener("click", () => {
+    // `chooseAccount` force Spotify a reafficher son ecran d'autorisation.
+    // Sans cela, la session web deja ouverte serait reutilisee en silence et
+    // on re-autoriserait la MEME personne en croyant en ajouter une autre.
+    auth.beginLogin({ chooseAccount: true }).catch((err) => ui.toast(err.message));
+  });
 
   /* --- Plein ecran --- */
   document

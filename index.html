@@ -69,6 +69,9 @@
             d="M8.5 3H11v8H3V8.5h5.5zM13 3h2.5v5.5H21V11h-8zM3 13h8v8H8.5v-5.5H3zM13 13h8v2.5h-5.5V21H13z"
           />
         </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="M9.3 16.2 5.1 12l-1.4 1.4 5.6 5.6L20.3 7.6 18.9 6.2z" />
+        </symbol>
         <symbol id="i-back" viewBox="0 0 24 24">
           <path d="M20 10.75H7.9l5.05-5.05L11.25 4 3.25 12l8 8 1.7-1.7-5.05-5.05H20z" />
         </symbol>
@@ -174,6 +177,10 @@
           <svg><use href="#i-back" /></svg>
         </button>
         <h2>Playlists</h2>
+        <button id="open-accounts" class="avatar-btn" aria-label="Changer de compte">
+          <img id="active-avatar" alt="" decoding="async" />
+          <span id="active-initial"></span>
+        </button>
       </div>
       <div id="pl-grid" class="pl-grid"></div>
     </section>
@@ -200,7 +207,28 @@
       <div id="tracks-list" class="tracks-list"></div>
     </section>
 
-    <!-- ===== 7. Ecran d'erreur bloquante ===== -->
+    <!-- ===== 7. Vue comptes ===== -->
+    <section id="view-accounts" class="view hidden">
+      <div class="pl-header">
+        <button id="close-accounts" class="btn" aria-label="Retour">
+          <svg><use href="#i-back" /></svg>
+        </button>
+        <h2>Comptes</h2>
+      </div>
+      <div id="accounts-list" class="accounts-list"></div>
+      <button id="add-account" class="btn-wide btn-add-account">
+        Ajouter un compte
+      </button>
+      <p class="accounts-hint">
+        Spotify n'a pas de selecteur de compte : si une session est deja
+        ouverte, c'est elle qui sera reautorisee. Pour ajouter une autre
+        personne, ouvre l'application dans une fenetre de navigation privee.
+        Son adresse e-mail Spotify doit aussi figurer dans User Management,
+        sur le dashboard developpeur.
+      </p>
+    </section>
+
+    <!-- ===== 8. Ecran d'erreur bloquante ===== -->
     <section id="view-error" class="view centered hidden">
       <h1 id="error-title">Oups</h1>
       <p id="error-msg"></p>

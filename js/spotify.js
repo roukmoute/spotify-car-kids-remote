@@ -183,6 +183,17 @@ async function api(path, options = {}) {
     const isPremium =
       payload?.error?.reason === "PREMIUM_REQUIRED" || /premium/i.test(detail);
 
+    // Compte absent de la liste du dashboard, en mode developpement. Le point
+    // crucial : l'autorisation OAuth REUSSIT quand meme, jetons compris.
+    // L'echec n'apparait qu'ici, au premier appel d'API.
+    if (/not registered/i.test(detail)) {
+      throw new SpotifyError(
+        "Ce compte Spotify n'est pas autorise sur l'application.",
+        403,
+        "NOT_REGISTERED",
+      );
+    }
+
     throw new SpotifyError(
       isPremium
         ? "Cette action necessite un compte Spotify Premium."
@@ -252,6 +263,17 @@ export async function getPlaylists(max = 100) {
     // plus petite image >= 200px pour limiter le cout de decodage.
     image: pickImage(p.images, 300),
   }));
+}
+
+/**
+ * Profil de l'utilisateur du jeton courant. Sert a savoir A QUI appartient une
+ * session qu'on vient d'obtenir, pour la ranger sous la bonne identite.
+ *
+ * `display_name` et `images` peuvent etre absents selon les scopes accordes ;
+ * `id` est toujours present, c'est lui qui sert de clef.
+ */
+export function getMe() {
+  return api("/me");
 }
 
 /**
