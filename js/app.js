@@ -362,7 +362,7 @@ async function loadPlaylists() {
     const playlists = await api.getPlaylists();
     playlistById.clear();
     for (const p of playlists) playlistById.set(p.id, p);
-    ui.renderPlaylists(playlists, (p) => openPlaylist(p, { from: "playlists" }));
+    ui.renderPlaylists(playlists, (p) => openPlaylist(p));
   } catch (err) {
     handleError(err, { silent: true });
   }
@@ -370,17 +370,14 @@ async function loadPlaylists() {
 
 /** Playlist actuellement affichee dans la vue titres. */
 let viewedPlaylist = null;
-/** Vue vers laquelle revient le bouton retour de la vue titres. */
-let tracksBackView = "playlists";
 
 /**
  * Ouvre la liste des titres d'une playlist.
  * @param {{id:string, uri:string, name:string}} playlist
- * @param {{from?: string, focusCurrent?: boolean}} [options]
+ * @param {{focusCurrent?: boolean}} [options]
  */
-async function openPlaylist(playlist, { from = "playlists", focusCurrent = false } = {}) {
+async function openPlaylist(playlist, { focusCurrent = false } = {}) {
   viewedPlaylist = playlist;
-  tracksBackView = from;
 
   ui.showTracksMessage("Chargement...", playlist.name);
   ui.showView("tracks");
@@ -420,14 +417,42 @@ function playWholePlaylist() {
   command(() => api.playContext(playlist.uri, state.deviceId, { shuffle: true }));
 }
 
+const PLAYLIST_URI_PREFIX = "spotify:playlist:";
+
+/** Id de la playlist en cours de lecture, ou null (album, artiste, radio). */
+function currentPlaylistId() {
+  const uri = state.player?.context?.uri;
+  return uri?.startsWith(PLAYLIST_URI_PREFIX)
+    ? uri.slice(PLAYLIST_URI_PREFIX.length)
+    : null;
+}
+
 /**
- * Ouvre les titres de la playlist en cours de lecture, positionnee sur le
- * morceau du moment.
+ * Unique point d'entree depuis la vue lecture : les chansons de la playlist
+ * en cours si on en joue une, sinon la grille des playlists.
  */
-async function openCurrentContext() {
-  const playlist = await resolveCurrentPlaylist();
-  if (!playlist) return;
-  openPlaylist(playlist, { from: "player", focusCurrent: true });
+async function openPlaylistsOrCurrent() {
+  const id = currentPlaylistId();
+  if (!id) {
+    ui.showView("playlists");
+    return;
+  }
+
+  // Cas courant : la playlist est deja connue, on bascule sans latence.
+  const known = playlistById.get(id);
+  if (known) {
+    openPlaylist(known, { focusCurrent: true });
+    return;
+  }
+
+  // Playlist inconnue (partagee par un tiers) : on montre la vue tout de
+  // suite pour que l'appui soit ressenti, puis on resout le nom.
+  ui.showTracksMessage("Chargement...", "");
+  ui.showView("tracks");
+
+  const fetched = await resolveCurrentPlaylist();
+  if (fetched) openPlaylist(fetched, { focusCurrent: true });
+  else ui.showView("playlists");
 }
 
 /**
@@ -436,10 +461,9 @@ async function openCurrentContext() {
  * repli sur un appel a l'API.
  */
 async function resolveCurrentPlaylist() {
-  const uri = state.player?.context?.uri;
-  if (!uri?.startsWith("spotify:playlist:")) return null;
+  const id = currentPlaylistId();
+  if (!id) return null;
 
-  const id = uri.slice("spotify:playlist:".length);
   const known = playlistById.get(id);
   if (known) return known;
 
@@ -452,11 +476,9 @@ async function resolveCurrentPlaylist() {
   }
 }
 
-/** Tient a jour la pastille "playlist en cours" sur la vue lecture. */
+/** Tient a jour l'etiquette "playlist en cours" sur la vue lecture. */
 async function refreshContextChip() {
-  const uri = state.player?.context?.uri;
-
-  if (!uri?.startsWith("spotify:playlist:")) {
+  if (!currentPlaylistId()) {
     ui.renderContext(null); // album, artiste, radio ou lecture libre
     return;
   }
@@ -542,23 +564,19 @@ function wireEvents() {
   ui.els.btnNext.addEventListener("click", skipNext);
   ui.els.btnPrev.addEventListener("click", skipPrevious);
 
-  /* --- Navigation playlists --- */
+  /* --- Navigation --- */
+  // Hierarchie volontairement lineaire, pour qu'un enfant n'ait jamais qu'un
+  // seul bouton retour a comprendre :
+  //   lecture  --[liste]-->  chansons  --[retour]-->  playlists  --[retour]--> lecture
   document
     .getElementById("open-playlists")
+    .addEventListener("click", openPlaylistsOrCurrent);
+  document
+    .getElementById("close-tracks")
     .addEventListener("click", () => ui.showView("playlists"));
   document
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
-
-  /* --- Navigation titres --- */
-  // La pastille renvoie vers la vue lecture, la grille vers la grille : le
-  // retour ramene toujours d'ou l'on vient.
-  document
-    .getElementById("current-context")
-    .addEventListener("click", openCurrentContext);
-  document
-    .getElementById("close-tracks")
-    .addEventListener("click", () => ui.showView(tracksBackView));
   document.getElementById("play-all").addEventListener("click", playWholePlaylist);
 
   /* --- Reprise apres mise en veille --- */
