@@ -7,7 +7,7 @@ Spotify, qui est bien trop lourde pour ce matériel.
 La musique continue de sortir du téléphone (ou de l'autoradio). La tablette ne
 lit rien : elle envoie seulement des commandes à Spotify Connect.
 
-**~35 Ko transférés** (26 Ko de code gzippé + 9 Ko d'icônes), sans dépendance,
+**~40 Ko transférés** (30 Ko de code gzippé + 9 Ko d'icônes), sans dépendance,
 sans build, sans backend. Et une fois en cache, le démarrage ne touche plus le
 réseau du tout.
 
@@ -16,7 +16,12 @@ réseau du tout.
 - Titre, artiste et pochette de ce qui joue
 - Lecture / pause / suivant / précédent, en très gros boutons
 - Sélecteur de playlists sous forme de grille de pochettes
+- Liste des titres d'une playlist, avec le morceau en cours repéré par une
+  icône — pour choisir une chanson précise et pas seulement lancer le tout
 - Paroles synchronisées en grand, qui défilent toutes seules
+
+Depuis la vue lecture, une pastille affiche la playlist en cours : un appui
+ouvre sa liste de titres, positionnée sur le morceau du moment.
 
 ## Comment ça marche
 

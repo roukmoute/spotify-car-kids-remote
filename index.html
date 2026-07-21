@@ -45,6 +45,11 @@
             d="M4 6h11v2.5H4zM4 11h11v2.5H4zM4 16h7v2.5H4zM17.5 11.5l4.5 3-4.5 3z"
           />
         </symbol>
+        <!-- Barres facon egaliseur : marque la piste en cours sans supposer
+             que l'enfant sache lire. -->
+        <symbol id="i-playing" viewBox="0 0 24 24">
+          <path d="M3 9h3v12H3zM9.5 3h3v18h-3zM16 12h3v9h-3z" />
+        </symbol>
         <symbol id="i-back" viewBox="0 0 24 24">
           <path d="M20 10.75H7.9l5.05-5.05L11.25 4 3.25 12l8 8 1.7-1.7-5.05-5.05H20z" />
         </symbol>
@@ -112,6 +117,10 @@
       </div>
 
       <div class="track-meta">
+        <button id="current-context" class="context-chip hidden" type="button">
+          <svg><use href="#i-list" /></svg>
+          <span id="current-context-name"></span>
+        </button>
         <h1 id="title">Rien en cours</h1>
         <p id="artist"></p>
 
@@ -145,7 +154,22 @@
       <div id="pl-grid" class="pl-grid"></div>
     </section>
 
-    <!-- ===== 6. Ecran d'erreur bloquante ===== -->
+    <!-- ===== 6. Vue titres d'une playlist ===== -->
+    <section id="view-tracks" class="view hidden">
+      <div class="pl-header">
+        <button id="close-tracks" class="btn" aria-label="Retour">
+          <svg><use href="#i-back" /></svg>
+        </button>
+        <h2 id="tracks-title">Titres</h2>
+        <button id="play-all" class="btn-pill" type="button">
+          <svg><use href="#i-play" /></svg>
+          Tout lire
+        </button>
+      </div>
+      <div id="tracks-list" class="tracks-list"></div>
+    </section>
+
+    <!-- ===== 7. Ecran d'erreur bloquante ===== -->
     <section id="view-error" class="view centered hidden">
       <h1 id="error-title">Oups</h1>
       <p id="error-msg"></p>

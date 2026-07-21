@@ -62,6 +62,8 @@ const state = {
   busy: false,
   /** Compteur de 204 consecutifs (voir EMPTY_STATES_BEFORE_IDLE). */
   emptyStates: 0,
+  /** URI du contexte de lecture (playlist, album...), pour detecter un changement. */
+  contextUri: null,
 };
 
 let pollTimer = null;
@@ -164,8 +166,10 @@ function applyPlayerState(player) {
     state.player = null;
     state.isPlaying = false;
     state.positionMs = 0;
+    state.contextUri = null;
     if (ui.renderTrack(null)) ui.clearLyrics("Lance la musique sur le telephone");
     ui.renderPlayback({ isPlaying: false });
+    ui.renderContext(null);
     return;
   }
 
@@ -182,9 +186,20 @@ function applyPlayerState(player) {
     disallows: player.actions?.disallows ?? {},
   });
 
+  // La pastille n'est rafraichie qu'au changement de contexte : sans ce
+  // garde-fou, chaque sondage relancerait une resolution de playlist.
+  const contextUri = player.context?.uri ?? null;
+  if (contextUri !== state.contextUri) {
+    state.contextUri = contextUri;
+    refreshContextChip();
+  }
+
   if (ui.renderTrack(track)) {
     state.trackId = track?.id ?? null;
     onTrackChanged(track);
+    // La vue titres peut etre ouverte pendant que la lecture avance : on
+    // deplace le surlignage sans reconstruire la liste.
+    ui.markCurrentTrack(state.trackId);
   }
 }
 
@@ -339,18 +354,115 @@ function skipPrevious() {
 /* Playlists                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Playlists de l'utilisateur, indexees pour retrouver un nom depuis un URI. */
+const playlistById = new Map();
+
 async function loadPlaylists() {
   try {
     const playlists = await api.getPlaylists();
-    ui.renderPlaylists(playlists, pickPlaylist);
+    playlistById.clear();
+    for (const p of playlists) playlistById.set(p.id, p);
+    ui.renderPlaylists(playlists, (p) => openPlaylist(p, { from: "playlists" }));
   } catch (err) {
     handleError(err, { silent: true });
   }
 }
 
-function pickPlaylist(playlist) {
+/** Playlist actuellement affichee dans la vue titres. */
+let viewedPlaylist = null;
+/** Vue vers laquelle revient le bouton retour de la vue titres. */
+let tracksBackView = "playlists";
+
+/**
+ * Ouvre la liste des titres d'une playlist.
+ * @param {{id:string, uri:string, name:string}} playlist
+ * @param {{from?: string, focusCurrent?: boolean}} [options]
+ */
+async function openPlaylist(playlist, { from = "playlists", focusCurrent = false } = {}) {
+  viewedPlaylist = playlist;
+  tracksBackView = from;
+
+  ui.showTracksMessage("Chargement...", playlist.name);
+  ui.showView("tracks");
+
+  let tracks;
+  try {
+    tracks = await api.getPlaylistTracks(playlist.id);
+  } catch (err) {
+    // On reste sur la vue : afficher l'erreur en place vaut mieux que
+    // renvoyer l'enfant sur un ecran qu'il n'a pas demande.
+    ui.showTracksMessage("Impossible de charger les titres.");
+    handleError(err, { silent: true });
+    return;
+  }
+
+  // L'utilisateur a pu ouvrir une autre playlist entre-temps.
+  if (viewedPlaylist?.id !== playlist.id) return;
+
+  if (!tracks.length) {
+    ui.showTracksMessage("Cette playlist est vide.");
+    return;
+  }
+
+  ui.renderTracks(tracks, playlist.name, (track) => playTrack(playlist, track));
+  ui.markCurrentTrack(state.trackId, focusCurrent);
+}
+
+function playTrack(playlist, track) {
+  ui.showView("player");
+  command(() => api.playTrackInContext(playlist.uri, track.uri, state.deviceId));
+}
+
+function playWholePlaylist() {
+  if (!viewedPlaylist) return;
+  const playlist = viewedPlaylist;
   ui.showView("player");
   command(() => api.playContext(playlist.uri, state.deviceId, { shuffle: true }));
+}
+
+/**
+ * Ouvre les titres de la playlist en cours de lecture, positionnee sur le
+ * morceau du moment.
+ */
+async function openCurrentContext() {
+  const playlist = await resolveCurrentPlaylist();
+  if (!playlist) return;
+  openPlaylist(playlist, { from: "player", focusCurrent: true });
+}
+
+/**
+ * Retrouve la playlist correspondant au contexte de lecture. Elle n'est pas
+ * forcement dans la liste de l'utilisateur (playlist d'un tiers), d'ou le
+ * repli sur un appel a l'API.
+ */
+async function resolveCurrentPlaylist() {
+  const uri = state.player?.context?.uri;
+  if (!uri?.startsWith("spotify:playlist:")) return null;
+
+  const id = uri.slice("spotify:playlist:".length);
+  const known = playlistById.get(id);
+  if (known) return known;
+
+  try {
+    const fetched = await api.getPlaylist(id);
+    if (fetched) playlistById.set(id, fetched);
+    return fetched;
+  } catch {
+    return null;
+  }
+}
+
+/** Tient a jour la pastille "playlist en cours" sur la vue lecture. */
+async function refreshContextChip() {
+  const uri = state.player?.context?.uri;
+
+  if (!uri?.startsWith("spotify:playlist:")) {
+    ui.renderContext(null); // album, artiste, radio ou lecture libre
+    return;
+  }
+
+  const playlist = await resolveCurrentPlaylist();
+  ui.renderContext(playlist?.name ?? null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -437,6 +549,17 @@ function wireEvents() {
   document
     .getElementById("close-playlists")
     .addEventListener("click", () => ui.showView("player"));
+
+  /* --- Navigation titres --- */
+  // La pastille renvoie vers la vue lecture, la grille vers la grille : le
+  // retour ramene toujours d'ou l'on vient.
+  document
+    .getElementById("current-context")
+    .addEventListener("click", openCurrentContext);
+  document
+    .getElementById("close-tracks")
+    .addEventListener("click", () => ui.showView(tracksBackView));
+  document.getElementById("play-all").addEventListener("click", playWholePlaylist);
 
   /* --- Reprise apres mise en veille --- */
   document.addEventListener("visibilitychange", () => {

@@ -332,6 +332,176 @@ img {
   overflow: hidden;
 }
 
+/* ---------- Pastille "playlist en cours" ---------- */
+
+.context-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-bottom: 0.3rem;
+  padding: 0.35rem 0.85rem 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition: transform 90ms ease-out, background-color 90ms ease-out;
+}
+
+.context-chip:active {
+  transform: scale(0.95);
+  background: var(--surface-hi);
+}
+
+.context-chip svg {
+  width: 1.1em;
+  height: 1.1em;
+  fill: currentColor;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.context-chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Bouton pilule (Tout lire) ---------- */
+
+.btn-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #04120a;
+  font-size: 1.05rem;
+  font-weight: 800;
+  transition: transform 90ms ease-out, background-color 90ms ease-out;
+}
+
+.btn-pill:active {
+  transform: scale(0.95);
+  background: var(--accent-press);
+}
+
+.btn-pill svg {
+  width: 1.1em;
+  height: 1.1em;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+/* ---------- Liste de titres ---------- */
+
+.tracks-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1rem;
+}
+
+.tracks-message {
+  color: var(--lyric-idle);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 2.5rem 1rem;
+  margin: 0;
+}
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  /* Plancher en px et non en rem : sur un ecran ou le clamp de --font-size
+     descend a 13px, la ligne tomberait a ~43px, sous le seuil de confort
+     tactile. Des doigts d'enfant dans une voiture qui bouge en ont besoin. */
+  min-height: 48px;
+  border-radius: 12px;
+  text-align: left;
+  /* Une playlist peut faire 200 lignes : on ne paie le layout et le decodage
+     d'image que pour ce qui est reellement a l'ecran. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3.4rem;
+  transition: background-color 90ms ease-out, transform 90ms ease-out;
+}
+
+.track-row:active {
+  transform: scale(0.985);
+  background: var(--surface-hi);
+}
+
+.track-row img {
+  width: 2.6rem;
+  height: 2.6rem;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.track-row .track-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* sans ca, l'ellipsis ne se declenche jamais en flex */
+  gap: 0.1rem;
+}
+
+/* line-height explicite plutot que `normal` : `normal` varie selon la police
+   retenue par le systeme, ce qui ferait varier la hauteur de ligne — donc le
+   nombre de titres visibles — d'un appareil a l'autre. */
+.track-row .track-name {
+  font-size: 1rem;
+  line-height: 1.25;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-row .track-artist {
+  font-size: 0.85rem;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Piste en cours de lecture */
+.track-row.is-current {
+  background: var(--surface);
+}
+
+.track-row.is-current .track-name {
+  color: var(--accent);
+}
+
+/* Petit indicateur pour reperer la piste en cours sans savoir lire */
+.track-row .track-mark {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  fill: var(--accent);
+  opacity: 0;
+}
+
+.track-row.is-current .track-mark {
+  opacity: 1;
+}
+
 /* ---------- Ecrans setup / login / erreur ---------- */
 
 .centered {

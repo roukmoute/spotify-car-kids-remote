@@ -16,6 +16,7 @@ const els = {
     loading: $("view-loading"),
     player: $("view-player"),
     playlists: $("view-playlists"),
+    tracks: $("view-tracks"),
     error: $("view-error"),
   },
   cover: $("cover"),
@@ -29,6 +30,10 @@ const els = {
   lyricsTrack: $("lyrics-track"),
   lyricsEmpty: $("lyrics-empty"),
   plGrid: $("pl-grid"),
+  tracksList: $("tracks-list"),
+  tracksTitle: $("tracks-title"),
+  currentContext: $("current-context"),
+  currentContextName: $("current-context-name"),
   toast: $("toast"),
   errorTitle: $("error-title"),
   errorMsg: $("error-msg"),
@@ -162,6 +167,104 @@ export function renderPlaylists(playlists, onPick) {
   }
 
   els.plGrid.replaceChildren(frag);
+}
+
+/* ------------------------------------------------------------------ */
+/* Titres d'une playlist                                               */
+/* ------------------------------------------------------------------ */
+
+/** Affiche ou masque la pastille "playlist en cours" sur la vue lecture. */
+export function renderContext(name) {
+  const hasName = Boolean(name);
+  els.currentContext.classList.toggle("hidden", !hasName);
+  if (hasName) els.currentContextName.textContent = name;
+}
+
+let renderedTrackRows = new Map();
+
+/** Message a la place de la liste (chargement, playlist vide, erreur). */
+export function showTracksMessage(message, playlistName) {
+  if (playlistName !== undefined) els.tracksTitle.textContent = playlistName;
+  renderedTrackRows = new Map();
+  const p = document.createElement("p");
+  p.className = "tracks-message";
+  p.textContent = message;
+  els.tracksList.replaceChildren(p);
+}
+
+/**
+ * @param {{id:string, uri:string, name:string, artist:string, image:string|null}[]} tracks
+ * @param {string} playlistName
+ * @param {(track: object) => void} onPick
+ */
+export function renderTracks(tracks, playlistName, onPick) {
+  els.tracksTitle.textContent = playlistName;
+
+  const frag = document.createDocumentFragment();
+  renderedTrackRows = new Map();
+
+  for (const track of tracks) {
+    const row = document.createElement("button");
+    row.className = "track-row";
+    row.type = "button";
+
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.alt = "";
+    img.src = track.image || BLANK;
+
+    const text = document.createElement("div");
+    text.className = "track-text";
+
+    const name = document.createElement("span");
+    name.className = "track-name";
+    name.textContent = track.name;
+
+    const artist = document.createElement("span");
+    artist.className = "track-artist";
+    artist.textContent = track.artist;
+
+    text.append(name, artist);
+
+    const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    mark.setAttribute("class", "track-mark");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#i-playing");
+    mark.append(use);
+
+    row.append(img, text, mark);
+    row.addEventListener("click", () => onPick(track));
+
+    // Plusieurs lignes peuvent porter le meme id (doublon dans la playlist) :
+    // on ne garde que la premiere pour le surlignage.
+    if (!renderedTrackRows.has(track.id)) renderedTrackRows.set(track.id, row);
+    frag.append(row);
+  }
+
+  els.tracksList.replaceChildren(frag);
+  els.tracksList.scrollTop = 0;
+}
+
+/**
+ * Met a jour le surlignage sans reconstruire la liste — appele a chaque
+ * changement de piste, y compris pendant que la vue est ouverte.
+ * @param {string|null} trackId
+ * @param {boolean} [scrollIntoView]
+ */
+export function markCurrentTrack(trackId, scrollIntoView = false) {
+  for (const [id, row] of renderedTrackRows) {
+    row.classList.toggle("is-current", id === trackId);
+  }
+
+  if (!scrollIntoView) return;
+  const row = trackId && renderedTrackRows.get(trackId);
+  if (!row) return;
+
+  // `content-visibility: auto` empeche scrollIntoView de bien mesurer une
+  // ligne encore non rendue : on calcule la position nous-memes.
+  els.tracksList.scrollTop =
+    row.offsetTop - els.tracksList.clientHeight / 2 + row.offsetHeight / 2;
 }
 
 /* ------------------------------------------------------------------ */

@@ -227,6 +227,85 @@ export async function getPlaylists(max = 100) {
   }));
 }
 
+/**
+ * Metadonnees d'une playlist par son id. Sert quand la lecture vient d'une
+ * playlist absente de la liste de l'utilisateur (playlist partagee par
+ * quelqu'un d'autre) : sans ca, impossible d'afficher son nom.
+ */
+export async function getPlaylist(playlistId) {
+  const p = await api(`/playlists/${playlistId}`, {
+    query: { fields: "id,uri,name,images" },
+  });
+  if (!p) return null;
+  return {
+    id: p.id,
+    uri: p.uri,
+    name: p.name,
+    image: pickImage(p.images, 300),
+  };
+}
+
+/**
+ * Titres d'une playlist.
+ *
+ * Le parametre `fields` n'est pas une coquetterie : sans lui, chaque piste
+ * renvoie une centaine de champs (marches disponibles, ids externes, objet
+ * album complet...). Sur une playlist de 200 titres ca represente plusieurs
+ * mega-octets a parser sur le thread principal de la tablette.
+ *
+ * @param {string} playlistId
+ * @param {number} [max] plafond, pour ne pas rendre une liste interminable
+ */
+export async function getPlaylistTracks(playlistId, max = 200) {
+  const fields =
+    "next,items(is_local,track(id,uri,name,duration_ms,artists(name),album(images(url,width))))";
+
+  const out = [];
+  let offset = 0;
+
+  while (out.length < max) {
+    const page = await api(`/playlists/${playlistId}/tracks`, {
+      query: { limit: 50, offset, fields, additional_types: "track" },
+    });
+
+    const items = page?.items ?? [];
+    for (const item of items) {
+      const t = item?.track;
+      // `track` peut etre null (piste retiree du catalogue) et les fichiers
+      // locaux n'ont pas d'URI jouable a distance : les deux casseraient la
+      // lecture s'ils etaient proposes.
+      if (!t?.uri || !t.id || item.is_local) continue;
+      out.push({
+        id: t.id,
+        uri: t.uri,
+        name: t.name,
+        artist: t.artists?.map((a) => a.name).join(", ") ?? "",
+        image: pickImage(t.album?.images, 200),
+      });
+    }
+
+    if (items.length < 50 || !page?.next) break;
+    offset += 50;
+  }
+
+  return out.slice(0, max);
+}
+
+/**
+ * Lance une piste precise EN CONSERVANT le contexte de la playlist, pour que
+ * "suivant" enchaine sur la suite de la playlist et non sur le neant.
+ *
+ * `offset` n'est accepte qu'accompagne de `context_uri`, et uniquement pour un
+ * album ou une playlist. `context_uri` et `uris` sont mutuellement exclusifs.
+ */
+export function playTrackInContext(contextUri, trackUri, deviceId) {
+  return api("/me/player/play", {
+    method: "PUT",
+    query: { device_id: deviceId },
+    body: { context_uri: contextUri, offset: { uri: trackUri } },
+  });
+}
+
 /** Choisit l'image la plus proche de `target` px sans descendre en dessous. */
 function pickImage(images, target) {
   if (!images?.length) return null;
