@@ -219,12 +219,23 @@ fois par morceau, puis le défilement n'est qu'une `translate3d` : cela reste su
 le compositeur et ne déclenche ni recalcul de layout ni repeint, ce qui compte
 beaucoup sur un SoC lent.
 
-**Service worker en stale-while-revalidate, pas en cache-first.** Le cache-first
-pur est plus rapide sur le papier, mais oublier de bumper la version du cache
-laisse la tablette bloquée indéfiniment sur l'ancienne version — le piège
-classique du service worker, et un piège coûteux quand l'appareil concerné vit
-dans une voiture. Le SWR sert le cache immédiatement (démarrage instantané) tout
-en rafraîchissant en arrière-plan, donc un déploiement se propage tout seul.
+**Service worker en réseau d'abord, pas en cache-first.** Le cache-first et son
+cousin stale-while-revalidate ont tous les deux été essayés et abandonnés : ils
+servent par construction une version périmée, et la moindre faille dans la
+revalidation laisse l'appareil bloqué sur du vieux code **sans aucun signe
+extérieur** — l'écran s'affiche normalement, il est simplement en retard. Sur
+une tablette posée dans une voiture, ce mode de panne est invisible, donc
+particulièrement pénible à diagnostiquer.
+
+Le réseau d'abord est déterministe : ce qui s'affiche est toujours ce qui est
+déployé. Le coût est modeste — le shell fait ~30 Ko, et l'app a de toute façon
+besoin du réseau pour piloter Spotify. Le cache garde son rôle là où il compte
+vraiment : tunnels, zones blanches, réseau qui rame, avec un délai d'attente de
+2,5 s pour ne pas y rester bloqué.
+
+Le pré-cache n'utilise volontairement pas `cache.addAll`, qui est atomique :
+une seule requête en échec annulerait tout. Sur une connexion partagée depuis
+un téléphone en roulant, un cache partiel vaut mieux que pas de cache.
 
 ## Limites connues
 

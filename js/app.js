@@ -618,12 +618,13 @@ function wireEvents() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
+
   // `load` plutot qu'immediat : l'enregistrement du SW ne doit pas concurrencer
   // le premier rendu sur un SoC lent.
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {
       // Contexte non securise (http://) ou navigateur sans SW : l'app
-      // fonctionne quand meme, elle demarre juste moins vite.
+      // fonctionne quand meme, elle perd juste son secours hors ligne.
     });
   });
 }
