@@ -216,15 +216,19 @@
         <h2>Comptes</h2>
       </div>
       <div id="accounts-list" class="accounts-list"></div>
-      <button id="add-account" class="btn-wide btn-add-account">
-        Ajouter un compte
-      </button>
+      <div class="accounts-actions">
+        <button id="spotify-logout" class="btn-ghost">
+          1. Deconnecter Spotify de ce navigateur
+        </button>
+        <button id="add-account" class="btn-wide btn-add-account">
+          2. Ajouter un compte
+        </button>
+      </div>
       <p class="accounts-hint">
-        Spotify n'a pas de selecteur de compte : si une session est deja
-        ouverte, c'est elle qui sera reautorisee. Pour ajouter une autre
-        personne, ouvre l'application dans une fenetre de navigation privee.
-        Son adresse e-mail Spotify doit aussi figurer dans User Management,
-        sur le dashboard developpeur.
+        Spotify n'a pas de selecteur de compte : sans l'etape 1, c'est la
+        personne deja connectee qui serait reautorisee. Se deconnecter ici
+        n'affecte pas les comptes deja enregistres ci-dessus, ni la musique en
+        cours.
       </p>
     </section>
 

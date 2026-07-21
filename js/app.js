@@ -832,6 +832,15 @@ function wireEvents() {
   document
     .getElementById("close-accounts")
     .addEventListener("click", () => ui.showView("playlists"));
+  // Spotify n'expose aucun moyen programmatique de changer de session, et il
+  // n'a pas de selecteur de compte. Deconnecter la session WEB est le seul
+  // levier : cela n'affecte pas les refresh_token deja enregistres, qui sont
+  // independants du cookie de session.
+  document.getElementById("spotify-logout").addEventListener("click", () => {
+    window.open("https://accounts.spotify.com/logout", "_blank");
+    ui.toast("Reviens ici ensuite, puis appuie sur Ajouter un compte.", 6000);
+  });
+
   document.getElementById("add-account").addEventListener("click", () => {
     // `chooseAccount` force Spotify a reafficher son ecran d'autorisation.
     // Sans cela, la session web deja ouverte serait reutilisee en silence et

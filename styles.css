@@ -654,10 +654,18 @@ img {
   color: var(--danger);
 }
 
+.accounts-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  margin-top: 0.4rem;
+}
+
 .btn-add-account {
   flex: 0 0 auto;
-  align-self: center;
-  margin-top: 0.4rem;
 }
 
 .accounts-hint {
@@ -735,6 +743,9 @@ img {
   padding: 0.8rem 1.8rem;
   font-size: 1rem;
   font-weight: 700;
+  /* Plancher tactile en absolu : le clamp de police peut descendre a 13px et
+     ferait tomber ce bouton sous le seuil confortable. */
+  min-height: 48px;
 }
 
 input[type="text"] {
