@@ -510,7 +510,17 @@ function handleError(err, { silent = false } = {}) {
   // Reseau instable en voiture : c'est attendu, on ne perturbe pas l'ecran.
   if (silent && (err?.reason === "NETWORK" || err?.reason === "RATE_LIMITED")) return;
 
-  ui.toast(err?.message || "Une erreur est survenue.");
+  // Les SpotifyError portent un message redige pour l'utilisateur. Tout le
+  // reste est une erreur JavaScript dont le message est technique et en
+  // anglais : sur une tablette utilisee par des enfants, mieux vaut une
+  // phrase comprehensible, le detail restant en console pour le debogage.
+  if (err instanceof api.SpotifyError) {
+    ui.toast(err.message);
+    return;
+  }
+
+  console.warn("[musique] erreur inattendue", err);
+  ui.toast("Petit souci, reessaie.");
 }
 
 /* ------------------------------------------------------------------ */

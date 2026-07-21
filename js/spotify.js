@@ -64,6 +64,34 @@ function clearBackoff() {
 }
 
 /**
+ * Lit le corps d'une reponse en succes.
+ *
+ * Les commandes du lecteur (play, pause, next...) sont documentees comme
+ * repondant `204 No Content`, mais en pratique Spotify renvoie parfois un
+ * `200` accompagne d'un corps qui n'est pas du JSON. Un `JSON.parse` direct
+ * jette alors que la commande a bel et bien abouti, et l'erreur remonte
+ * jusqu'a l'utilisateur sous forme de message alarmant.
+ *
+ * On ne tente donc le parsing que si le serveur annonce du JSON.
+ * `Content-Type` fait partie des en-tetes exposes par defaut en CORS, il est
+ * donc lisible ici — contrairement a `Retry-After`.
+ */
+async function parseBody(res) {
+  const text = await res.text();
+  if (!text.trim()) return null;
+
+  if (!/\bjson\b/i.test(res.headers.get("Content-Type") || "")) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Corps annonce en JSON mais illisible : on degrade en "pas de donnees"
+    // plutot que de faire echouer une commande qui a reussi.
+    return null;
+  }
+}
+
+/**
  * @param {string} path      chemin relatif a /v1, ex. "/me/player/play"
  * @param {object} [options]
  * @param {string} [options.method]
@@ -117,8 +145,7 @@ async function api(path, options = {}) {
 
   if (res.ok) {
     clearBackoff();
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
+    return parseBody(res);
   }
 
   /* ---------------- Gestion des erreurs ---------------- */
