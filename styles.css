@@ -405,6 +405,9 @@ input[type="text"]:focus {
   left: 50%;
   bottom: 1.2rem;
   transform: translate(-50%, 150%);
+  /* Purement informatif : sans ca, l'element reste une zone cliquable
+     invisible au-dessus des boutons de transport, meme hors ecran. */
+  pointer-events: none;
   background: var(--danger);
   color: #fff;
   font-weight: 700;
